@@ -15,7 +15,7 @@ import {
   MapPin,
   ChartSpline,
   Pencil,
-  FileDown
+  FileDown,
 } from "lucide-react";
 import {
   TooltipProvider,
@@ -54,7 +54,7 @@ const Sidebar = () => {
         <div className="flex p-3 items-center justify-center border-[#e74e15]">
           <Link href="/">
             <Image
-              src="/logo-branca.png"
+              src="/logo-branca.webp"
               alt="Logo do site"
               quality={100}
               priority={true}
@@ -89,7 +89,9 @@ const Sidebar = () => {
               label="Quotas"
             />
             <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/manage-devices")}
+              onClick={() =>
+                handleProtectedNavigation("/dashboard/manage-devices")
+              }
               icon={<Smartphone className="h-5 w-5" />}
               label="Gerenciar dispositivos"
             />
@@ -99,16 +101,19 @@ const Sidebar = () => {
               label="Localização"
             />
             <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/export-form")}
+              onClick={() =>
+                handleProtectedNavigation("/dashboard/export-form")
+              }
               icon={<FileDown className="h-5 w-5" />}
               label="Exportar"
             />
             <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/manage-team")}
+              onClick={() =>
+                handleProtectedNavigation("/dashboard/manage-team")
+              }
               icon={<Users className="h-5 w-5" />}
               label="Gerencias time"
             />
-
           </TooltipProvider>
         </nav>
       </aside>
