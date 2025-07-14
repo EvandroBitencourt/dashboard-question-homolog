@@ -4,7 +4,7 @@ export interface quizzesProps {
   title: string;
   max_sample: number;
   end_date: Date;
-  status: "test" | "active";
+  status: "test" | "active" | "disabled";
   change_level: string;
   value_ns_nr: number;
   value_blank: number;

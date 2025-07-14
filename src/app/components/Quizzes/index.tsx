@@ -48,7 +48,7 @@ const quizSchema = z.object({
   title: z.string().min(3, "O título é obrigatório"),
   end_date: z.string().min(1, "A data de término é obrigatória"),
   max_sample: z.coerce.number().nullable().optional(),
-  status: z.enum(["active", "test"]),
+  status: z.enum(["active", "test", "disabled"]),
   change_level: z.string().nullable().optional(),
   value_ns_nr: z.coerce.number(),
   value_skipped: z.coerce.number(),
@@ -428,7 +428,7 @@ export default function Quizzes() {
                             </div>
                             <FormControl>
                               <Switch
-                                checked={field.value}
+                                checked={Boolean(field.value)}
                                 onCheckedChange={field.onChange}
                               />
                             </FormControl>
@@ -464,8 +464,9 @@ export default function Quizzes() {
             <li
               key={quiz.id}
               onClick={() => setSelectedQuizId(quiz.id)} // <-- define o quiz selecionado
-              className={`cursor-pointer bg-white p-4 border rounded-md shadow-sm hover:shadow transition flex justify-between items-center ${selectedQuizId === quiz.id ? 'border-2 border-[#e74e15]' : ''
-                }`}
+              className={`cursor-pointer bg-white p-4 border rounded-md shadow-sm hover:shadow transition flex justify-between items-center ${
+                selectedQuizId === quiz.id ? "border-2 border-[#e74e15]" : ""
+              }`}
             >
               <div>
                 <h3 className="font-bold text-lg">{quiz.title}</h3>
@@ -576,7 +577,7 @@ export default function Quizzes() {
                                             await updateQuizStatusOnly(
                                               selectedQuiz.id,
                                               "active",
-                                              "baixo"
+                                              "low"
                                             );
 
                                             field.onChange("active");
@@ -614,7 +615,7 @@ export default function Quizzes() {
                                     )}
                                     <option value="active">Ativo</option>
                                     {field.value === "active" ||
-                                      field.value === "disabled" ? (
+                                    field.value === "disabled" ? (
                                       <option value="disabled">
                                         Desabilitado
                                       </option>
@@ -632,11 +633,14 @@ export default function Quizzes() {
                                 <FormLabel>Nível de Alteração</FormLabel>
                                 <FormControl>
                                   <select
-                                    {...field}
+                                    name={field.name}
+                                    ref={field.ref}
                                     className="input"
                                     disabled={
                                       editForm.watch("status") !== "active"
                                     }
+                                    value={field.value ?? ""} // <- garante que nunca será `null`
+                                    onBlur={field.onBlur}
                                     onChange={async (e) => {
                                       const newValue = e.target.value;
                                       const currentValue = field.value;

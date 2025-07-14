@@ -233,9 +233,9 @@ export default function Question() {
         question_id: newQuestion.id,
         label: "",
         value: "",
-        is_open: 0,
-        is_exclusive: 0,
-        is_nsnr: 0,
+        is_open: false,
+        is_exclusive: false,
+        is_nsnr: false,
         sort_order: 0,
       });
 

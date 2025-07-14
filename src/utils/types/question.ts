@@ -15,6 +15,7 @@ export interface QuestionProps {
 }
 
 export interface QuestionOptionProps {
+    label: string;
     id: number;
     question_id: number;
     value: string;
