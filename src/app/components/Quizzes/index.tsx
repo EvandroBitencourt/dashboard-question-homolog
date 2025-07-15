@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash } from "lucide-react";
 import { FaSpinner } from "react-icons/fa";
 import { toast } from "react-toastify";
-import Link from "next/link";
 import { Switch } from "@/components/ui/switch";
 
 import {
@@ -65,7 +64,7 @@ const quizSchema = z.object({
 type QuizFormData = z.infer<typeof quizSchema>;
 
 export default function Quizzes() {
-  const { selectedQuizId, setSelectedQuizId } = useQuiz();
+  const { selectedQuizId, setSelectedQuizId, setSelectedQuizTitle } = useQuiz();
 
   const [quizzes, setQuizzes] = useState<quizzesProps[]>([]);
   const [loading, setLoading] = useState(true);
@@ -463,7 +462,10 @@ export default function Quizzes() {
           {quizzes.map((quiz) => (
             <li
               key={quiz.id}
-              onClick={() => setSelectedQuizId(quiz.id)} // <-- define o quiz selecionado
+              onClick={() => {
+                setSelectedQuizId(quiz.id);
+                setSelectedQuizTitle(quiz.title);
+              }}
               className={`cursor-pointer bg-white p-4 border rounded-md shadow-sm hover:shadow transition flex justify-between items-center ${
                 selectedQuizId === quiz.id ? "border-2 border-[#e74e15]" : ""
               }`}

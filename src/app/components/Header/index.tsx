@@ -11,11 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { getUserProfile, updateMyProfile } from "@/utils/actions/user-data";
 import type { UserProps } from "@/utils/types/user";
 
-import {
-  Avatar,
-  AvatarFallback,
-  AvatarImage,
-} from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -48,10 +44,16 @@ import {
   LogOut,
 } from "lucide-react";
 
+import { useQuiz } from "@/context/QuizContext";
+
 const formSchema = z.object({
   username: z.string().min(3, "Nome muito curto"),
   email: z.string().email("E-mail inválido"),
-  password: z.string().min(6, "Mínimo 6 caracteres").optional().or(z.literal("")),
+  password: z
+    .string()
+    .min(6, "Mínimo 6 caracteres")
+    .optional()
+    .or(z.literal("")),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -61,6 +63,8 @@ const Header = () => {
   const [open, setOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [user, setUser] = useState<UserProps | null>(null);
+
+  const { selectedQuizTitle } = useQuiz(); // pega o título direto do contexto
 
   const {
     register,
@@ -90,6 +94,7 @@ const Header = () => {
     if (res.ok) {
       toast.success("Logout realizado com sucesso!");
       localStorage.removeItem("selectedQuizId");
+      localStorage.removeItem("selectedQuizTitle");
       router.push("/login");
     } else {
       toast.error("Erro ao sair da conta.");
@@ -105,19 +110,20 @@ const Header = () => {
       };
 
       const updated = await updateMyProfile(payload);
-
       setUser(updated.user);
       toast.success("Conta atualizada com sucesso!");
       setDialogOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao atualizar a conta.");
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao atualizar a conta."
+      );
     }
   };
 
   return (
     <div className="top-0 left-0 right-0 z-40 h-[80px] bg-[#3e3e3e] pl-[190px]">
       <div className="flex items-center justify-between h-full px-4 max-w-screen-xl mx-auto">
-        <div className="gap-3 flex">
+        <div className="gap-3 flex items-center">
           <Button
             variant="outline"
             className="bg-[#e74e15] text-white hover:text-[#e74e15]"
@@ -133,6 +139,15 @@ const Header = () => {
           >
             <Link href="/dashboard/archived">ARQUIVADOS</Link>
           </Button>
+
+          {selectedQuizTitle && (
+            <p className="text-white font-medium mt-1">
+              Você está trabalhando no questionário:{" "}
+              <span className="font-semibold text-orange-400">
+                {selectedQuizTitle}
+              </span>
+            </p>
+          )}
         </div>
 
         <DropdownMenu onOpenChange={(open) => setOpen(open)}>
@@ -146,7 +161,9 @@ const Header = () => {
                 {user?.username ?? "Usuário"}
               </span>
               <ChevronDown
-                className={`h-4 w-4 text-white transition-transform ${open ? "rotate-180" : ""}`}
+                className={`h-4 w-4 text-white transition-transform ${
+                  open ? "rotate-180" : ""
+                }`}
               />
             </div>
           </DropdownMenuTrigger>
@@ -192,7 +209,9 @@ const Header = () => {
 
             <DropdownMenuItem>
               <User className="mr-2 h-4 w-4" />
-              <Link href="/dashboard/interviewers">Gerenciar entrevistadores</Link>
+              <Link href="/dashboard/interviewers">
+                Gerenciar entrevistadores
+              </Link>
             </DropdownMenuItem>
 
             <DropdownMenuItem>
@@ -236,7 +255,9 @@ const Header = () => {
                 <label className="text-sm font-medium">Nome</label>
                 <Input type="text" {...register("username")} />
                 {errors.username && (
-                  <p className="text-red-500 text-sm">{errors.username.message}</p>
+                  <p className="text-red-500 text-sm">
+                    {errors.username.message}
+                  </p>
                 )}
               </div>
               <div>
@@ -250,7 +271,9 @@ const Header = () => {
                 <label className="text-sm font-medium">Nova senha</label>
                 <Input type="password" {...register("password")} />
                 {errors.password && (
-                  <p className="text-red-500 text-sm">{errors.password.message}</p>
+                  <p className="text-red-500 text-sm">
+                    {errors.password.message}
+                  </p>
                 )}
               </div>
               <DialogFooter>
