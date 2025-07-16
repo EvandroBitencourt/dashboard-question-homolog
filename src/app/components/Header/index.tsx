@@ -64,7 +64,12 @@ const Header = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [user, setUser] = useState<UserProps | null>(null);
 
-  const { selectedQuizTitle } = useQuiz(); // pega o título direto do contexto
+  const {
+    isClientReady,
+    selectedQuizTitle,
+    setSelectedQuizId,
+    setSelectedQuizTitle,
+  } = useQuiz(); // pega o título direto do contexto
 
   const {
     register,
@@ -95,6 +100,8 @@ const Header = () => {
       toast.success("Logout realizado com sucesso!");
       localStorage.removeItem("selectedQuizId");
       localStorage.removeItem("selectedQuizTitle");
+      setSelectedQuizId(null);
+      setSelectedQuizTitle("");
       router.push("/login");
     } else {
       toast.error("Erro ao sair da conta.");
@@ -140,7 +147,7 @@ const Header = () => {
             <Link href="/dashboard/archived">ARQUIVADOS</Link>
           </Button>
 
-          {selectedQuizTitle && (
+          {isClientReady && selectedQuizTitle && (
             <p className="text-white font-medium mt-1">
               Você está trabalhando no questionário:{" "}
               <span className="font-semibold text-orange-400">

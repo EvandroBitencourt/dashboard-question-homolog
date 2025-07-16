@@ -1,3 +1,4 @@
+// context/QuizContext.tsx
 "use client";
 
 import {
@@ -19,10 +20,8 @@ interface QuizContextType {
 const QuizContext = createContext<QuizContextType | undefined>(undefined);
 
 export const QuizProvider = ({ children }: { children: ReactNode }) => {
-  const [selectedQuizId, setSelectedQuizIdState] = useState<number | null>(
-    null
-  );
-  const [selectedQuizTitle, setSelectedQuizTitleState] = useState<string>("");
+  const [selectedQuizId, setSelectedQuizId] = useState<number | null>(null);
+  const [selectedQuizTitle, setSelectedQuizTitle] = useState<string>("");
   const [isClientReady, setIsClientReady] = useState(false);
 
   useEffect(() => {
@@ -31,11 +30,11 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
 
     const parsedId = Number(storedId);
     if (!isNaN(parsedId) && parsedId > 0) {
-      setSelectedQuizIdState(parsedId);
-    }
-
-    if (storedTitle) {
-      setSelectedQuizTitleState(storedTitle);
+      setSelectedQuizId(parsedId);
+      setSelectedQuizTitle(storedTitle || "");
+    } else {
+      setSelectedQuizId(null);
+      setSelectedQuizTitle("");
     }
 
     setIsClientReady(true);
@@ -44,26 +43,12 @@ export const QuizProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     if (selectedQuizId !== null && selectedQuizId > 0) {
       localStorage.setItem("selectedQuizId", String(selectedQuizId));
-    } else {
-      localStorage.removeItem("selectedQuizId");
-    }
-  }, [selectedQuizId]);
-
-  useEffect(() => {
-    if (selectedQuizTitle) {
       localStorage.setItem("selectedQuizTitle", selectedQuizTitle);
     } else {
+      localStorage.removeItem("selectedQuizId");
       localStorage.removeItem("selectedQuizTitle");
     }
-  }, [selectedQuizTitle]);
-
-  const setSelectedQuizId = (id: number | null) => {
-    setSelectedQuizIdState(id);
-  };
-
-  const setSelectedQuizTitle = (title: string) => {
-    setSelectedQuizTitleState(title);
-  };
+  }, [selectedQuizId, selectedQuizTitle]);
 
   return (
     <QuizContext.Provider
