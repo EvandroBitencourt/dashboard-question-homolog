@@ -15,10 +15,10 @@ export interface QuestionProps {
 }
 
 export interface QuestionOptionProps {
-    label: string;
     id: number;
     question_id: number;
     value: string;
+    label: string; // ✅ Adicione esta linha
     is_open: boolean;
     is_exclusive: boolean;
     is_nsnr: boolean;

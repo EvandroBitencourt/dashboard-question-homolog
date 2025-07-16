@@ -62,20 +62,21 @@ export default function SingleChoiceForm({
   }
 
   useEffect(() => {
-    setLocalOptions(options.map(parseOption));
+    const parsedOptions = options.map(parseOption);
+    const fixedOptions = parsedOptions.map((opt, index) => ({
+      ...opt,
+      value: opt.value || String(index + 1),
+    }));
+    setLocalOptions(fixedOptions);
   }, [options]);
 
-  function getNextValue() {
-    if (localOptions.length === 0) return "P1";
-    const lastValue = localOptions[localOptions.length - 1].value || "P1";
-    const match = lastValue.match(/^([a-zA-Z_]+)(\d+)$/i);
-    if (match) {
-      const prefix = match[1];
-      const number = parseInt(match[2], 10) + 1;
-      return `${prefix}${number}`;
-    } else {
-      return `${lastValue}2`;
-    }
+  function getNextValue(): string {
+    const numericValues = localOptions
+      .map((opt) => parseInt(opt.value, 10))
+      .filter((v) => !isNaN(v));
+
+    const max = numericValues.length > 0 ? Math.max(...numericValues) : 0;
+    return String(max + 1);
   }
 
   const handleAddOption = async (type: "default" | "open" | "nsnr") => {
@@ -83,46 +84,23 @@ export default function SingleChoiceForm({
     setIsLoading(true);
 
     try {
-      let newOptionData: Omit<QuestionOptionProps, "id">;
+      let newOptionData: Omit<QuestionOptionProps, "id"> & { label: string } = {
+        question_id: Number(question.id),
+        label:
+          type === "open"
+            ? "Opção aberta"
+            : type === "nsnr"
+            ? "NS/NR"
+            : "Nova opção",
+        value: getNextValue(),
+        is_open: type === "open", // boolean
+        is_exclusive: false, // boolean
+        is_nsnr: type === "nsnr", // boolean
+        sort_order: localOptions.length,
+        mask: "custom",
+      };
 
-      if (type === "default") {
-        newOptionData = {
-          question_id: Number(question.id),
-          label: "Nova opção",
-          value: getNextValue(),
-          is_open: false,
-          is_exclusive: false,
-          is_nsnr: false,
-          sort_order: localOptions.length,
-          mask: "custom",
-        };
-      } else if (type === "open") {
-        newOptionData = {
-          question_id: Number(question.id),
-          label: "Opção aberta",
-          value: getNextValue(),
-          is_open: true,
-          is_exclusive: false,
-          is_nsnr: false,
-          sort_order: localOptions.length,
-          mask: "custom",
-        };
-      } else if (type === "nsnr") {
-        if (localOptions.some((o) => o.is_nsnr)) {
-          setIsLoading(false);
-          return;
-        }
-        newOptionData = {
-          question_id: Number(question.id),
-          label: "NS/NR",
-          value: getNextValue(),
-          is_open: false,
-          is_exclusive: false,
-          is_nsnr: true,
-          sort_order: localOptions.length,
-          mask: "custom",
-        };
-      } else {
+      if (type === "nsnr" && localOptions.some((o) => o.is_nsnr)) {
         setIsLoading(false);
         return;
       }
@@ -132,9 +110,7 @@ export default function SingleChoiceForm({
       if (createdOption) {
         const updated = [...localOptions, parseOption(createdOption)];
         setLocalOptions(updated);
-        if (onOptionsChange) onOptionsChange(updated);
-      } else {
-        console.error("Erro ao criar opção no backend");
+        onOptionsChange?.(updated);
       }
     } catch (error) {
       console.error("Erro ao adicionar opção:", error);
@@ -154,25 +130,22 @@ export default function SingleChoiceForm({
       i === index ? { ...opt, [field]: value } : opt
     );
     setLocalOptions(updated);
-    if (onOptionsChange) onOptionsChange(updated);
+    onOptionsChange?.(updated);
 
     const option = localOptions[index];
-    if (option && option.id && typeof option.id === "number" && option.id > 0) {
+    if (option?.id && option.id > 0) {
       setIsLoading(true);
       setShowSaving(true);
       try {
-        const dataToSend: any = {};
+        const dataToSend: any = {
+          [field]: ["is_open", "is_exclusive", "is_nsnr"].includes(field)
+            ? value
+              ? 1
+              : 0
+            : value,
+        };
 
-        if (["is_open", "is_exclusive", "is_nsnr"].includes(field)) {
-          dataToSend[field] = value ? 1 : 0;
-        } else {
-          dataToSend[field] = value;
-        }
-
-        const updatedOption = await updateQuestionOption(option.id, dataToSend);
-        if (!updatedOption) {
-          console.error("Erro ao atualizar opção no backend");
-        }
+        await updateQuestionOption(option.id, dataToSend);
       } catch (error) {
         console.error("Erro ao atualizar opção:", error);
       } finally {
@@ -191,17 +164,14 @@ export default function SingleChoiceForm({
 
     const option = localOptions[index];
 
-    if (option && option.id && typeof option.id === "number" && option.id > 0) {
+    if (option?.id && option.id > 0) {
       setIsLoading(true);
       try {
         const success = await deleteQuestionOption(option.id);
         if (success) {
-          const updated = [...localOptions];
-          updated.splice(index, 1);
+          const updated = localOptions.filter((_, i) => i !== index);
           setLocalOptions(updated);
-          if (onOptionsChange) onOptionsChange(updated);
-        } else {
-          console.error("Erro ao deletar opção no backend");
+          onOptionsChange?.(updated);
         }
       } catch (error) {
         console.error("Erro ao remover opção:", error);
@@ -209,10 +179,9 @@ export default function SingleChoiceForm({
         setIsLoading(false);
       }
     } else {
-      const updated = [...localOptions];
-      updated.splice(index, 1);
+      const updated = localOptions.filter((_, i) => i !== index);
       setLocalOptions(updated);
-      if (onOptionsChange) onOptionsChange(updated);
+      onOptionsChange?.(updated);
     }
   };
 
@@ -255,11 +224,10 @@ export default function SingleChoiceForm({
                   };
                 }}
                 onChange={(e) => {
-                  const updated = localOptions.map((opt, i) =>
-                    i === index ? { ...opt, label: e.target.value } : opt
-                  );
+                  const updated = [...localOptions];
+                  updated[index].label = e.target.value;
                   setLocalOptions(updated);
-                  if (onOptionsChange) onOptionsChange(updated);
+                  onOptionsChange?.(updated);
                 }}
                 onBlur={(e) => {
                   const original =
@@ -281,11 +249,10 @@ export default function SingleChoiceForm({
                   };
                 }}
                 onChange={(e) => {
-                  const updated = localOptions.map((opt, i) =>
-                    i === index ? { ...opt, value: e.target.value } : opt
-                  );
+                  const updated = [...localOptions];
+                  updated[index].value = e.target.value;
                   setLocalOptions(updated);
-                  if (onOptionsChange) onOptionsChange(updated);
+                  onOptionsChange?.(updated);
                 }}
                 onBlur={(e) => {
                   const original =
