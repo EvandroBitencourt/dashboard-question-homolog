@@ -3,7 +3,8 @@
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Plus, Trash } from "lucide-react";
+import Swal from "sweetalert2";
 import {
   Dialog,
   DialogTrigger,
@@ -308,6 +309,21 @@ export default function Question() {
     [selectedQuestionFull, updateLoading]
   );
 
+  const handleStaticDelete = async () => {
+    const result = await Swal.fire({
+      title: "Deseja excluir esta questão?",
+      text: "Essa ação não poderá ser desfeita.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Sim, excluir",
+      cancelButtonText: "Cancelar",
+    });
+
+    if (result.isConfirmed) {
+      Swal.fire("Excluído!", "A questão foi removida com sucesso.", "success");
+    }
+  };
+
   // Debounced title update to prevent excessive API calls
   const [titleUpdateTimeout, setTitleUpdateTimeout] =
     useState<NodeJS.Timeout | null>(null);
@@ -443,7 +459,15 @@ export default function Question() {
         {/* Question Details */}
         <section className="flex-1 p-6 overflow-y-auto">
           {selectedQuestionFull && <QuestionActions />}
-          <h3 className="font-semibold text-xl mb-4">Detalhes da Questão</h3>
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-semibold text-xl">Detalhes da Questão</h3>
+            <button
+              onClick={handleStaticDelete}
+              className="w-10 h-10 flex items-center justify-center rounded-md hover:bg-red-100 transition"
+            >
+              <Trash className="w-6 h-6 text-red-600" />
+            </button>
+          </div>
 
           {selectedQuestionFull ? (
             <div className="space-y-6">
