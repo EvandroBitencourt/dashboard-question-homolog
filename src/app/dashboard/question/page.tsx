@@ -25,6 +25,7 @@ import {
   createQuestion,
   getQuestionWithOptions,
   updateQuestion,
+  deleteQuestion,
 } from "@/utils/actions/question-data";
 import { useQuiz } from "@/context/QuizContext";
 import { QuestionProps, QuestionWithOptions } from "@/utils/types/question";
@@ -310,6 +311,8 @@ export default function Question() {
   );
 
   const handleStaticDelete = async () => {
+    if (!selectedQuestionFull) return;
+
     const result = await Swal.fire({
       title: "Deseja excluir esta questão?",
       text: "Essa ação não poderá ser desfeita.",
@@ -320,7 +323,27 @@ export default function Question() {
     });
 
     if (result.isConfirmed) {
-      Swal.fire("Excluído!", "A questão foi removida com sucesso.", "success");
+      try {
+        await deleteQuestion(selectedQuestionFull.question.id);
+
+        // Remove visualmente da lista
+        setQuestions((prev) =>
+          prev.filter((q) => q.id !== selectedQuestionFull.question.id)
+        );
+
+        // Limpa seleção
+        setSelectedQuestionId(null);
+        setSelectedQuestionFull(null);
+
+        Swal.fire(
+          "Excluído!",
+          "A questão foi removida com sucesso.",
+          "success"
+        );
+      } catch (err) {
+        console.error("Erro ao excluir questão:", err);
+        Swal.fire("Erro", "Não foi possível excluir a questão.", "error");
+      }
     }
   };
 
