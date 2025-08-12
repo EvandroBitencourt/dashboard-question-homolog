@@ -168,9 +168,8 @@ const Header = () => {
                 {user?.username ?? "Usuário"}
               </span>
               <ChevronDown
-                className={`h-4 w-4 text-white transition-transform ${
-                  open ? "rotate-180" : ""
-                }`}
+                className={`h-4 w-4 text-white transition-transform ${open ? "rotate-180" : ""
+                  }`}
               />
             </div>
           </DropdownMenuTrigger>
@@ -206,7 +205,9 @@ const Header = () => {
 
             <DropdownMenuItem>
               <Smartphone className="mr-2 h-4 w-4" />
-              Administrar PINs
+              <Link href="/dashboard/pins">
+                Administrar PINs
+              </Link>
             </DropdownMenuItem>
 
             <DropdownMenuItem>
