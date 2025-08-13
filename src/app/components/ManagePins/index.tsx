@@ -9,36 +9,10 @@ import { FaSpinner } from "react-icons/fa";
 import Swal from "sweetalert2";
 import { toast } from "react-toastify";
 
-// import {
-//   listPins,
-//   createPin,
-//   updatePin,
-//   deletePin,
-// } from "@/utils/actions/pins-data";
-
-type PinProps = {
-    id?: number;
-    name: string;
-    code: string; // ex: MBP67W
-    assigned: boolean;
-    device_uuid?: string | null;
-    device_model?: string | null;
-    app_version?: string | null;
-    android_version?: string | null;
-    created_at?: string;
-    updated_at?: string;
-};
+import { PinProps } from "@/utils/types/pin";
+import { listPins, createPin, updatePin, deletePin } from "@/utils/actions/manage-pin-data";
 
 const ORANGE = "#e85228";
-
-function generatePin(len = 6) {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // evita 1/I e 0/O
-    let out = "";
-    for (let i = 0; i < len; i++) {
-        out += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return out;
-}
 
 export default function ManagePins() {
     // esquerda (lista)
@@ -51,28 +25,27 @@ export default function ManagePins() {
     const [editing, setEditing] = useState<PinProps | null>(null);
 
     const [name, setName] = useState("");
-    const [code, setCode] = useState(generatePin());
-    const [assigned, setAssigned] = useState(false);
+    const [pinCode, setPinCode] = useState(""); // read-only
+    const [assigned, setAssigned] = useState<boolean>(false); // EDITÁVEL
 
-    // campos do aparelho (só leitura)
-    const [deviceUUID] = useState<string>("");
-    const [deviceModel] = useState<string>("");
-    const [appVersion] = useState<string>("");
-    const [androidVersion] = useState<string>("");
+    // campos do aparelho (read-only)
+    const [deviceUUID, setDeviceUUID] = useState<string>("");
+    const [deviceModel, setDeviceModel] = useState<string>("");
+    const [appVersion, setAppVersion] = useState<string>("");
+    const [androidVersion, setAndroidVersion] = useState<string>("");
 
-    // ---------- mock de carregamento ----------
+    // ---------- carregar da API ----------
     useEffect(() => {
-        // (troque pelo listPins() quando ligar na API)
         const load = async () => {
-            setLoading(true);
-            // const data = await listPins();
-            const data: PinProps[] = [
-                { id: 1, name: "Evandro", code: "MBP67W", assigned: false },
-                { id: 2, name: "Maria Benedita", code: "M1DRA1", assigned: true },
-                { id: 3, name: "Mara Jaqueline Almeida", code: "MAMGPP", assigned: false },
-            ];
-            setPins(data);
-            setLoading(false);
+            try {
+                setLoading(true);
+                const data = await listPins();
+                setPins(data ?? []);
+            } catch {
+                toast.error("Erro ao listar PINs.");
+            } finally {
+                setLoading(false);
+            }
         };
         load();
     }, []);
@@ -81,34 +54,41 @@ export default function ManagePins() {
     const filtered = useMemo(() => {
         const term = search.trim().toLowerCase();
         if (!term) return pins;
-        return pins.filter(
-            (p) =>
-                p.name.toLowerCase().includes(term) ||
-                p.code.toLowerCase().includes(term)
-        );
+
+        return pins.filter((p) => {
+            const name = (p.name ?? "").toLowerCase();
+            const code = (p.pin_code ?? "").toLowerCase(); // trata undefined
+            return name.includes(term) || code.includes(term);
+        });
     }, [pins, search]);
+
 
     const resetForm = () => {
         setEditing(null);
         setFormOpen(false);
         setName("");
-        setCode(generatePin());
+        setPinCode("");
         setAssigned(false);
+        setDeviceUUID("");
+        setDeviceModel("");
+        setAppVersion("");
+        setAndroidVersion("");
     };
 
     const openNew = () => {
-        setEditing(null);
-        setName("");
-        setCode(generatePin());
-        setAssigned(false);
+        resetForm();
         setFormOpen(true);
     };
 
     const openEdit = (pin: PinProps) => {
         setEditing(pin);
         setName(pin.name);
-        setCode(pin.code);
-        setAssigned(pin.assigned);
+        setPinCode(pin.pin_code ?? "");
+        setAssigned(!!pin.assigned);
+        setDeviceUUID(pin.uuid ?? "");
+        setDeviceModel(pin.device_model ?? "");
+        setAppVersion(pin.app_version ?? "");
+        setAndroidVersion(pin.android_version ?? "");
         setFormOpen(true);
     };
 
@@ -133,9 +113,10 @@ export default function ManagePins() {
         if (!result.isConfirmed) return;
 
         try {
-            // await deletePin(id);
+            await deletePin(id);
             setPins((prev) => prev.filter((p) => p.id !== id));
             toast.success("PIN excluído!");
+            if (editing?.id === id) resetForm();
         } catch {
             toast.error("Erro ao excluir PIN.");
         }
@@ -147,25 +128,32 @@ export default function ManagePins() {
             return;
         }
 
-        const payload: PinProps = {
-            name: name.trim(),
-            code,
-            assigned,
-        };
-
         try {
             if (editing?.id) {
-                // const updated = await updatePin(editing.id, payload);
-                const updated: PinProps = { ...payload, id: editing.id };
+                // ✅ atualização: só nome e/ou atribuído
+                const updated = await updatePin(editing.id, {
+                    name: name.trim(),
+                    assigned,
+                });
+
                 setPins((prev) => prev.map((p) => (p.id === editing.id ? updated : p)));
+                setEditing(updated); // mantém na tela com os dados atualizados
                 toast.success("PIN atualizado!");
             } else {
-                // const created = await createPin(payload);
-                const created: PinProps = { ...payload, id: Math.floor(Math.random() * 100000) };
+                // ✅ criação: envia só o nome; PIN é gerado no backend
+                const created = await createPin({ name: name.trim() });
                 setPins((prev) => [created, ...prev]);
                 toast.success("PIN criado!");
+
+                // Preenche o formulário com o retorno para exibir/copiar
+                setEditing(created);
+                setPinCode(created.pin_code ?? "");
+                setAssigned(!!created.assigned);
+                setDeviceUUID(created.uuid ?? "");
+                setDeviceModel(created.device_model ?? "");
+                setAppVersion(created.app_version ?? "");
+                setAndroidVersion(created.android_version ?? "");
             }
-            resetForm();
         } catch {
             toast.error("Erro ao salvar PIN.");
         }
@@ -217,7 +205,7 @@ export default function ManagePins() {
                                     </div>
                                     <div>
                                         <p className="font-medium">{p.name}</p>
-                                        <p className="text-xs text-gray-500">{p.code}</p>
+                                        <p className="text-xs text-gray-500">{p.pin_code}</p>
                                     </div>
                                 </div>
 
@@ -227,21 +215,23 @@ export default function ManagePins() {
                                         title="Copiar PIN"
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            handleCopy(p.code);
+                                            handleCopy(p.pin_code ?? "");
                                         }}
                                     >
                                         <Copy className="w-4 h-4" />
                                     </button>
-                                    <button
-                                        className="text-gray-500 hover:text-red-600"
-                                        title="Excluir"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (p.id) handleDelete(p.id);
-                                        }}
-                                    >
-                                        <Trash className="w-4 h-4" />
-                                    </button>
+                                    {p.id && (
+                                        <button
+                                            className="text-gray-500 hover:text-red-600"
+                                            title="Excluir"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(p.id!);
+                                            }}
+                                        >
+                                            <Trash className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         ))
@@ -251,15 +241,15 @@ export default function ManagePins() {
 
             {/* Formulário */}
             {formOpen && (
-                <div className="lg:w-1/2 pl-3">
+                <div className="lg:w-1/2 pl-2">
                     <div className="bg-[#e85228] text-white px-4 py-3">
                         <h2 className="text-lg font-semibold">
-                            {editing ? "Editar PIN" : "Adicionar novo PIN"}
+                            {editing ? "Detalhes do PIN" : "Adicionar novo PIN"}
                         </h2>
                     </div>
 
                     <div className="p-4 space-y-3">
-                        {/* Nome */}
+                        {/* Nome (editável) */}
                         <div>
                             <Input
                                 placeholder="Nome"
@@ -274,29 +264,26 @@ export default function ManagePins() {
                             )}
                         </div>
 
-                        {/* PIN + copiar */}
+                        {/* PIN + copiar (read-only) */}
                         <div className="flex items-center gap-2">
-                            <Input value={code} readOnly className="font-mono" />
+                            <Input value={pinCode} readOnly className="font-mono" />
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => handleCopy(code)}
+                                onClick={() => handleCopy(pinCode)}
                                 title="Copiar PIN"
+                                disabled={!pinCode}
                             >
                                 <Copy className="w-4 h-4 mr-1" />
                                 Copiar
                             </Button>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setCode(generatePin())}
-                                title="Gerar novo PIN"
-                            >
+                            {/* “Gerar” desabilitado (PIN é gerado no backend) */}
+                            <Button type="button" variant="outline" disabled title="Gerado automaticamente">
                                 Gerar
                             </Button>
                         </div>
 
-                        {/* Atribuído (toggle simples) */}
+                        {/* Atribuído (EDITÁVEL) */}
                         <label className="flex items-center gap-3 select-none">
                             <input
                                 type="checkbox"
@@ -320,7 +307,7 @@ export default function ManagePins() {
                                 onClick={handleSubmit}
                                 className="bg-[#e85228] text-white hover:bg-[#d9441e]"
                             >
-                                {editing ? "Salvar Alterações" : "Salvar PIN"}
+                                {editing ? "Salvar" : "Salvar PIN"}
                             </Button>
                             <Button variant="outline" onClick={resetForm}>
                                 Cancelar
