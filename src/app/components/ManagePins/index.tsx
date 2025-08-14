@@ -14,6 +14,21 @@ import { listPins, createPin, updatePin, deletePin } from "@/utils/actions/manag
 
 const ORANGE = "#e85228";
 
+/** Gera um UUID v4 apenas para EXIBIÇÃO no formulário de novo PIN */
+function genUUIDv4() {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        return crypto.randomUUID();
+    }
+    const s: string[] = [];
+    const hex = "0123456789abcdef";
+    for (let i = 0; i < 36; i++) s[i] = hex[Math.floor(Math.random() * 16)];
+    s[14] = "4";
+    // @ts-ignore
+    s[19] = hex[(parseInt(s[19], 16) & 0x3) | 0x8];
+    s[8] = s[13] = s[18] = s[23] = "-";
+    return s.join("");
+}
+
 export default function ManagePins() {
     // esquerda (lista)
     const [pins, setPins] = useState<PinProps[]>([]);
@@ -26,7 +41,7 @@ export default function ManagePins() {
 
     const [name, setName] = useState("");
     const [pinCode, setPinCode] = useState(""); // read-only
-    const [assigned, setAssigned] = useState<boolean>(false); // EDITÁVEL
+    const [assigned, setAssigned] = useState<boolean>(false); // editável
 
     // campos do aparelho (read-only)
     const [deviceUUID, setDeviceUUID] = useState<string>("");
@@ -56,12 +71,11 @@ export default function ManagePins() {
         if (!term) return pins;
 
         return pins.filter((p) => {
-            const name = (p.name ?? "").toLowerCase();
-            const code = (p.pin_code ?? "").toLowerCase(); // trata undefined
-            return name.includes(term) || code.includes(term);
+            const n = (p.name ?? "").toLowerCase();
+            const c = (p.pin_code ?? "").toLowerCase();
+            return n.includes(term) || c.includes(term);
         });
     }, [pins, search]);
-
 
     const resetForm = () => {
         setEditing(null);
@@ -77,6 +91,8 @@ export default function ManagePins() {
 
     const openNew = () => {
         resetForm();
+        // Mostra um UUID v4 fake apenas para visual (não será enviado no create)
+        setDeviceUUID(genUUIDv4());
         setFormOpen(true);
     };
 
@@ -130,26 +146,26 @@ export default function ManagePins() {
 
         try {
             if (editing?.id) {
-                // ✅ atualização: só nome e/ou atribuído
+                // atualização: só nome e/ou atribuído
                 const updated = await updatePin(editing.id, {
                     name: name.trim(),
                     assigned,
                 });
 
                 setPins((prev) => prev.map((p) => (p.id === editing.id ? updated : p)));
-                setEditing(updated); // mantém na tela com os dados atualizados
+                setEditing(updated); // mantém na tela
                 toast.success("PIN atualizado!");
             } else {
-                // ✅ criação: envia só o nome; PIN é gerado no backend
+                // criação: envia só o nome; PIN é gerado no backend
                 const created = await createPin({ name: name.trim() });
                 setPins((prev) => [created, ...prev]);
                 toast.success("PIN criado!");
 
-                // Preenche o formulário com o retorno para exibir/copiar
+                // Preenche para exibir/copiar
                 setEditing(created);
                 setPinCode(created.pin_code ?? "");
                 setAssigned(!!created.assigned);
-                setDeviceUUID(created.uuid ?? "");
+                setDeviceUUID(created.uuid ?? deviceUUID); // se backend não mandar, mantém o fake exibido
                 setDeviceModel(created.device_model ?? "");
                 setAppVersion(created.app_version ?? "");
                 setAndroidVersion(created.android_version ?? "");
@@ -283,13 +299,13 @@ export default function ManagePins() {
                             </Button>
                         </div>
 
-                        {/* Atribuído (EDITÁVEL) */}
+                        {/* Atribuído (editável) */}
                         <label className="flex items-center gap-3 select-none">
                             <input
                                 type="checkbox"
                                 checked={assigned}
                                 onChange={(e) => setAssigned(e.target.checked)}
-                                className="h-5 w-5 accent-[##e85228]"
+                                className="h-5 w-5 accent-[#e85228]"
                             />
                             <span className="text-sm font-medium">Atribuído</span>
                         </label>
