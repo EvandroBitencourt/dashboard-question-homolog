@@ -51,6 +51,7 @@ const formSchema = z.object({
   email: z.string().email("E-mail inválido"),
   password: z.string().min(6, "Mínimo 6 caracteres").optional().or(z.literal("")),
 });
+
 type FormValues = z.infer<typeof formSchema>;
 
 const Header = () => {
@@ -61,12 +62,9 @@ const Header = () => {
 
   const { isClientReady, selectedQuizTitle, setSelectedQuizId, setSelectedQuizTitle } = useQuiz();
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<FormValues>({ resolver: zodResolver(formSchema) });
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+  });
 
   useEffect(() => {
     getUserProfile()
@@ -79,6 +77,7 @@ const Header = () => {
 
   const handleLogout = async () => {
     const res = await fetch("/api/logout", { method: "POST" });
+
     if (res.ok) {
       toast.success("Logout realizado com sucesso!");
       localStorage.removeItem("selectedQuizId");
@@ -98,6 +97,7 @@ const Header = () => {
         email: data.email,
         ...(data.password ? { password: data.password } : {}),
       };
+
       const updated = await updateMyProfile(payload);
       setUser(updated.user);
       toast.success("Conta atualizada com sucesso!");
@@ -108,39 +108,14 @@ const Header = () => {
   };
 
   return (
-    <div
-      className="
-        top-0 left-0 right-0 z-40
-        bg-[#3e3e3e]
-        h-14 sm:h-16 lg:h-[80px]
-        pl-0 lg:pl-[190px]
-      "
-    >
-      <div
-        className="
-          flex items-center justify-between h-full
-          px-3 sm:px-4
-          max-w-screen-xl mx-auto
-        "
-      >
-        {/* Ações/abas à esquerda */}
-        <div
-          className="
-            flex items-center gap-2 sm:gap-3
-            overflow-x-auto
-            scrollbar-none
-            flex-wrap
-          "
-        >
+    <div className="top-0 left-0 right-0 z-40 bg-[#3e3e3e] pl-[190px]">
+      {/* container agora é flex-wrap para quebrar em duas linhas no mobile */}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 mx-auto max-w-screen-xl">
+        {/* Ações à esquerda */}
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            className="
-              bg-[#e74e15] text-white hover:text-[#e74e15]
-              h-8 sm:h-9 lg:h-10
-              px-3 sm:px-4
-              text-xs sm:text-sm
-              whitespace-nowrap
-            "
+            className="bg-[#e74e15] text-white hover:text-[#e74e15]"
             asChild
           >
             <Link href="/">QUESTIONÁRIO</Link>
@@ -148,45 +123,24 @@ const Header = () => {
 
           <Button
             variant="outline"
-            className="
-              bg-transparent text-white hover:text-white hover:bg-[#e74e15]
-              h-8 sm:h-9 lg:h-10
-              px-3 sm:px-4
-              text-xs sm:text-sm
-              whitespace-nowrap
-            "
+            className="bg-transparent text-white hover:text-white hover:bg-[#e74e15]"
             asChild
           >
             <Link href="/dashboard/archived">ARQUIVADOS</Link>
           </Button>
-
-          {/* Título do quiz: mostra a partir de md */}
-          {isClientReady && selectedQuizTitle && (
-            <p className="hidden md:block text-white text-xs sm:text-sm font-medium mt-0.5">
-              Você está trabalhando no questionário:{" "}
-              <span className="font-semibold text-orange-400">{selectedQuizTitle}</span>
-            </p>
-          )}
         </div>
 
-        {/* Usuário / menu */}
+        {/* Perfil à direita (fica no topo à direita em desktop; em mobile permanece na mesma linha) */}
         <DropdownMenu onOpenChange={(o) => setOpen(o)}>
           <DropdownMenuTrigger asChild>
-            <div className="flex items-center gap-2 cursor-pointer select-none">
-              <Avatar className="w-8 h-8 sm:w-9 sm:h-9">
+            <div className="flex items-center gap-2 cursor-pointer">
+              <Avatar className="w-8 h-8">
                 <AvatarImage src="https://github.com/evandrobitencourt.png" />
                 <AvatarFallback>EB</AvatarFallback>
               </Avatar>
-
-              {/* Esconde o nome no xs (mostra a partir de sm) */}
-              <span className="hidden sm:block text-white font-medium">
-                {user?.username ?? "Usuário"}
-              </span>
-
-              {/* Chevron também só no sm+ para economizar espaço */}
+              <span className="text-white font-medium">{user?.username ?? "Usuário"}</span>
               <ChevronDown
-                className={`hidden sm:block h-4 w-4 text-white transition-transform ${open ? "rotate-180" : ""
-                  }`}
+                className={`h-4 w-4 text-white transition-transform ${open ? "rotate-180" : ""}`}
               />
             </div>
           </DropdownMenuTrigger>
@@ -251,7 +205,6 @@ const Header = () => {
               <Languages className="mr-2 h-4 w-4" />
               Português
             </DropdownMenuItem>
-
             <DropdownMenuItem>
               <Languages className="mr-2 h-4 w-4" />
               Inglês
@@ -266,43 +219,59 @@ const Header = () => {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Dialog de conta */}
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogContent className="sm:max-w-[400px]">
-            <DialogHeader>
-              <DialogTitle>Editar conta</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit(handleUpdate)} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Nome</label>
-                <Input type="text" {...register("username")} />
-                {errors.username && (
-                  <p className="text-red-500 text-sm">{errors.username.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-medium">E-mail</label>
-                <Input type="email" {...register("email")} />
-                {errors.email && (
-                  <p className="text-red-500 text-sm">{errors.email.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="text-sm font-medium">Nova senha</label>
-                <Input type="password" {...register("password")} />
-                {errors.password && (
-                  <p className="text-red-500 text-sm">{errors.password.message}</p>
-                )}
-              </div>
-              <DialogFooter>
-                <Button type="submit" className="bg-[#e74e15] text-white">
-                  Salvar
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Linha do título do questionário — ocupa linha inteira no mobile */}
+        {isClientReady && selectedQuizTitle && (
+          <p
+            className="
+              w-full md:w-auto
+              text-white text-sm md:text-[15px]
+              mt-2 md:mt-0
+              truncate md:max-w-[60ch]
+            "
+            title={selectedQuizTitle}
+          >
+            Você está trabalhando no questionário:{" "}
+            <span className="font-semibold text-orange-400">{selectedQuizTitle}</span>
+          </p>
+        )}
       </div>
+
+      {/* Dialog de conta (inalterado) */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Editar conta</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit(handleUpdate)} className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Nome</label>
+              <Input type="text" {...register("username")} />
+              {errors.username && (
+                <p className="text-red-500 text-sm">{errors.username.message}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium">E-mail</label>
+              <Input type="email" {...register("email")} />
+              {errors.email && (
+                <p className="text-red-500 text-sm">{errors.email.message}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium">Nova senha</label>
+              <Input type="password" {...register("password")} />
+              {errors.password && (
+                <p className="text-red-500 text-sm">{errors.password.message}</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button type="submit" className="bg-[#e74e15] text-white">
+                Salvar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
