@@ -86,7 +86,7 @@ const Sidebar = () => {
         <div className="flex p-3 items-center justify-center">
           <Link href="/">
             <Image
-              src="/logo-branca.png"
+              src="/logo-branca.webp"
               alt="Logo do site"
               width={130}
               height={100}
