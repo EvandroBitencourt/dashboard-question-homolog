@@ -3,14 +3,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import {
-  Settings,
-  LogOut,
-  Menu,
-  Speech,
   Users,
   ChartPie,
   MessageSquareQuote,
-  FileQuestion,
   Smartphone,
   MapPin,
   ChartSpline,
@@ -23,17 +18,35 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip";
-import { Sheet, SheetTrigger, SheetContent } from "@/components/ui/sheet";
-import { Button } from "@/components/ui/button";
 import { useQuiz } from "@/context/QuizContext";
 import Swal from "sweetalert2";
+
+/** Botão genérico usado nos dois layouts */
+function IconBtn({
+  onClick,
+  children,
+  className = "",
+  size = "md",
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  className?: string;
+  size?: "sm" | "md";
+}) {
+  const base =
+    "grid place-items-center rounded-lg bg-[#e74e15] text-white transition-colors hover:bg-[#d9441e]";
+  const dims = size === "sm" ? "h-10 w-10" : "h-12 w-12";
+  return (
+    <button onClick={onClick} className={`${base} ${dims} ${className}`}>
+      {children}
+    </button>
+  );
+}
 
 const Sidebar = () => {
   const { selectedQuizId } = useQuiz();
 
   const handleProtectedNavigation = (href: string) => {
-    console.log("Tentando acessar:", href, "selectedQuizId:", selectedQuizId);
-
     if (!selectedQuizId || selectedQuizId <= 0 || isNaN(selectedQuizId)) {
       Swal.fire({
         icon: "warning",
@@ -42,217 +55,100 @@ const Sidebar = () => {
       });
       return;
     }
-
     window.location.assign(href);
   };
 
+  // Um único array define os itens (usado no desktop e no mobile)
+  const items: { label: string; icon: React.ReactNode; href: string }[] = [
+    { label: "Painel", icon: <ChartSpline className="h-5 w-5" />, href: "/dashboard/panel" },
+    {
+      label: "Acompanhamento de variáveis",
+      icon: <ChartPie className="h-5 w-5" />,
+      href: "/dashboard/inspector",
+    },
+    { label: "Editar questões", icon: <Pencil className="h-5 w-5" />, href: "/dashboard/question" },
+    { label: "Quotas", icon: <MessageSquareQuote className="h-5 w-5" />, href: "/dashboard/quotas" },
+    {
+      label: "Gerenciar dispositivos",
+      icon: <Smartphone className="h-5 w-5" />,
+      href: "/dashboard/manage-devices",
+    },
+    { label: "Localização", icon: <MapPin className="h-5 w-5" />, href: "/dashboard/faq" },
+    { label: "Exportar", icon: <FileDown className="h-5 w-5" />, href: "/dashboard/export-form" },
+    { label: "Gerenciar time", icon: <Users className="h-5 w-5" />, href: "/dashboard/manage-team" },
+  ];
+
   return (
     <div className="flex w-full flex-col bg-muted/40">
-      {/* DESKTOP MENU */}
-      <aside className="fixed inset-y-0 left-0 z-10 w-[190px] border-r bg-[#3e3e3e] text-white sm:flex flex-col hidden">
+      {/* ===== DESKTOP (sm+) – sidebar fixa à esquerda ===== */}
+      <aside className="hidden sm:flex fixed inset-y-0 left-0 z-10 w-[190px] border-r bg-[#3e3e3e] text-white flex-col">
         {/* Logo */}
-        <div className="flex p-3 items-center justify-center border-[#e74e15]">
+        <div className="flex p-3 items-center justify-center">
           <Link href="/">
             <Image
-              src="/logo-branca.webp"
+              src="/logo-branca.png"
               alt="Logo do site"
-              quality={100}
-              priority={true}
               width={130}
               height={100}
+              priority
               className="object-cover"
             />
           </Link>
         </div>
 
-        {/* Navegação sempre visível */}
+        {/* Ícones */}
         <nav className="flex flex-col items-center flex-1 gap-6 py-5 text-[#f7f7f7]">
           <TooltipProvider>
-            <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/panel")}
-              icon={<ChartSpline className="h-5 w-5" />}
-              label="Painel"
-            />
-            <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/inspector")}
-              icon={<ChartPie className="h-5 w-5" />}
-              label="Acompanhamento de variáveis"
-            />
-            <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/question")}
-              icon={<Pencil className="h-5 w-5" />}
-              label="Editar questões"
-            />
-            <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/quotas")}
-              icon={<MessageSquareQuote className="h-5 w-5" />}
-              label="Quotas"
-            />
-            <SidebarLink
-              onClick={() =>
-                handleProtectedNavigation("/dashboard/manage-devices")
-              }
-              icon={<Smartphone className="h-5 w-5" />}
-              label="Gerenciar dispositivos"
-            />
-            <SidebarLink
-              onClick={() => handleProtectedNavigation("/dashboard/faq")}
-              icon={<MapPin className="h-5 w-5" />}
-              label="Localização"
-            />
-            <SidebarLink
-              onClick={() =>
-                handleProtectedNavigation("/dashboard/export-form")
-              }
-              icon={<FileDown className="h-5 w-5" />}
-              label="Exportar"
-            />
-            <SidebarLink
-              onClick={() =>
-                handleProtectedNavigation("/dashboard/manage-team")
-              }
-              icon={<Users className="h-5 w-5" />}
-              label="Gerencias time"
-            />
+            {items.map((it) => (
+              <Tooltip key={it.label}>
+                <TooltipTrigger asChild>
+                  <IconBtn onClick={() => handleProtectedNavigation(it.href)}>
+                    {it.icon}
+                  </IconBtn>
+                </TooltipTrigger>
+                <TooltipContent side="right">{it.label}</TooltipContent>
+              </Tooltip>
+            ))}
           </TooltipProvider>
         </nav>
       </aside>
 
-      {/* MOBILE MENU */}
+      {/* ===== MOBILE (<sm) – barra superior fixa com ícones roláveis ===== */}
       <div className="sm:hidden flex flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between px-4 border-b bg-gray-900 text-white gap-4">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button size="icon" variant="secondary" className="bg-amber-300">
-                <Menu className="w-5 h-5" />
-                <span className="sr-only">Abrir / fechar menu</span>
-              </Button>
-            </SheetTrigger>
-
-            <SheetContent side="left" className="p-4">
-              <nav className="grid gap-4 text-base font-medium">
-                <MobileSidebarLink
-                  href="/dashboard/banner-home"
-                  icon={<ChartSpline className="h-5 w-5" />}
-                  label="Painel"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/banner-home"
-                  icon={<ChartPie className="h-5 w-5" />}
-                  label="Acompanhamento de variáveis"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/question"
-                  icon={<FileQuestion className="h-5 w-5" />}
-                  label="Editar questões"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/quotas"
-                  icon={<MessageSquareQuote className="h-5 w-5" />}
-                  label="Quotas"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/modalidades"
-                  icon={<Smartphone className="h-5 w-5" />}
-                  label="Gerenciar dispositivos"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/faq"
-                  icon={<MapPin className="h-5 w-5" />}
-                  label="Localização"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/depoimentos"
-                  icon={<Speech className="h-5 w-5" />}
-                  label="Depoimentos"
-                />
-                <MobileSidebarLink
-                  href="/dashboard/register"
-                  icon={<Users className="h-5 w-5" />}
-                  label="Gerenciar time"
-                />
-
-                <button className="flex items-center gap-3 text-red-500">
-                  <LogOut className="h-5 w-5" /> Sair
-                </button>
-              </nav>
-            </SheetContent>
-          </Sheet>
-
-          <Image
-            src="/logo-icone-power.png"
-            alt="Logo do site"
-            quality={100}
-            priority={true}
-            width={40}
-            height={40}
-            className="object-cover"
-          />
-        </header>
+        {/* Barra de ícones; fica logo abaixo do Header (que tem h-14) */}
+        <div
+          className="
+            sticky top-14 z-30
+            bg-[#111827] text-white
+            border-b border-black/10
+          "
+        >
+          <div
+            className="
+              flex items-center gap-3 px-3 py-2
+              overflow-x-auto no-scrollbar
+            "
+          >
+            {items.map((it) => (
+              <div key={it.label} className="flex flex-col items-center gap-1">
+                <IconBtn
+                  size="sm"
+                  onClick={() => handleProtectedNavigation(it.href)}
+                  className="shrink-0"
+                >
+                  {it.icon}
+                </IconBtn>
+                {/* legenda opcional; escondida em telas muito pequenas */}
+                <span className="text-[10px] text-gray-200 whitespace-nowrap hidden xs:block">
+                  {it.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 };
-
-function SidebarLink({
-  onClick,
-  icon,
-  label,
-}: {
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          onClick={onClick}
-          className="flex h-10 w-15 bg-[#e74e15] items-center justify-center rounded-lg transition-colors hover:bg-gray-800"
-        >
-          {icon}
-          <span className="sr-only">{label}</span>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-function MobileSidebarLink({
-  href,
-  icon,
-  label,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  const { selectedQuizId } = useQuiz();
-
-  const handleClick = () => {
-    console.log("📱 Clicou:", href, "selectedQuizId:", selectedQuizId);
-
-    if (!selectedQuizId || selectedQuizId <= 0 || isNaN(selectedQuizId)) {
-      Swal.fire({
-        icon: "warning",
-        title: "Selecione um questionário",
-        text: "Você precisa selecionar um questionário antes de continuar.",
-      });
-      return;
-    }
-
-    window.location.assign(href);
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      className="flex items-center gap-3 text-muted-foreground hover:text-foreground"
-    >
-      {icon} {label}
-    </button>
-  );
-}
 
 export default Sidebar;
