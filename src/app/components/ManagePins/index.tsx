@@ -1,310 +1,337 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { toast } from "react-toastify";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-
-import { getUserProfile, updateMyProfile } from "@/utils/actions/user-data";
-import type { UserProps } from "@/utils/types/user";
-
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-    Dialog,
-    DialogTrigger,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "@/components/ui/dialog";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Plus, Trash, Copy } from "lucide-react";
+import { FaSpinner } from "react-icons/fa";
+import Swal from "sweetalert2";
+import { toast } from "react-toastify";
 
-import {
-    ChevronDown,
-    DollarSign,
-    Info,
-    Users,
-    Shield,
-    Smartphone,
-    User,
-    MessageCircle,
-    Languages,
-    LogOut,
-} from "lucide-react";
+import { PinProps } from "@/utils/types/pin";
+import { listPins, createPin, updatePin, deletePin } from "@/utils/actions/manage-pin-data";
 
-import { useQuiz } from "@/context/QuizContext";
+const ORANGE = "#e85228";
 
-const formSchema = z.object({
-    username: z.string().min(3, "Nome muito curto"),
-    email: z.string().email("E-mail inválido"),
-    password: z.string().min(6, "Mínimo 6 caracteres").optional().or(z.literal("")),
-});
-type FormValues = z.infer<typeof formSchema>;
+/** Gera um UUID v4 apenas para EXIBIÇÃO no formulário de novo PIN */
+function genUUIDv4() {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+        return crypto.randomUUID();
+    }
+    const s: string[] = [];
+    const hex = "0123456789abcdef";
+    for (let i = 0; i < 36; i++) s[i] = hex[Math.floor(Math.random() * 16)];
+    s[14] = "4";
+    // @ts-ignore
+    s[19] = hex[(parseInt(s[19], 16) & 0x3) | 0x8];
+    s[8] = s[13] = s[18] = s[23] = "-";
+    return s.join("");
+}
 
-const Header = () => {
-    const router = useRouter();
-    const [open, setOpen] = useState(false);
-    const [dialogOpen, setDialogOpen] = useState(false);
-    const [user, setUser] = useState<UserProps | null>(null);
+export default function ManagePins() {
+    // esquerda (lista)
+    const [pins, setPins] = useState<PinProps[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
 
-    const { isClientReady, selectedQuizTitle, setSelectedQuizId, setSelectedQuizTitle } = useQuiz();
+    // direita (form)
+    const [formOpen, setFormOpen] = useState(false);
+    const [editing, setEditing] = useState<PinProps | null>(null);
 
-    const {
-        register,
-        handleSubmit,
-        reset,
-        formState: { errors },
-    } = useForm<FormValues>({ resolver: zodResolver(formSchema) });
+    const [name, setName] = useState("");
+    const [pinCode, setPinCode] = useState(""); // read-only
+    const [assigned, setAssigned] = useState<boolean>(false); // editável
 
+    // campos do aparelho (read-only)
+    const [deviceUUID, setDeviceUUID] = useState<string>("");
+    const [deviceModel, setDeviceModel] = useState<string>("");
+    const [appVersion, setAppVersion] = useState<string>("");
+    const [androidVersion, setAndroidVersion] = useState<string>("");
+
+    // ---------- carregar da API ----------
     useEffect(() => {
-        getUserProfile()
-            .then((data) => {
-                setUser(data);
-                reset({ username: data.username, email: data.email, password: "" });
-            })
-            .catch(() => setUser(null));
-    }, [reset]);
+        const load = async () => {
+            try {
+                setLoading(true);
+                const data = await listPins();
+                setPins(data ?? []);
+            } catch {
+                toast.error("Erro ao listar PINs.");
+            } finally {
+                setLoading(false);
+            }
+        };
+        load();
+    }, []);
 
-    const handleLogout = async () => {
-        const res = await fetch("/api/logout", { method: "POST" });
-        if (res.ok) {
-            toast.success("Logout realizado com sucesso!");
-            localStorage.removeItem("selectedQuizId");
-            localStorage.removeItem("selectedQuizTitle");
-            setSelectedQuizId(null);
-            setSelectedQuizTitle("");
-            router.push("/login");
-        } else {
-            toast.error("Erro ao sair da conta.");
+    // ---------- helpers ----------
+    const filtered = useMemo(() => {
+        const term = search.trim().toLowerCase();
+        if (!term) return pins;
+
+        return pins.filter((p) => {
+            const n = (p.name ?? "").toLowerCase();
+            const c = (p.pin_code ?? "").toLowerCase();
+            return n.includes(term) || c.includes(term);
+        });
+    }, [pins, search]);
+
+    const resetForm = () => {
+        setEditing(null);
+        setFormOpen(false);
+        setName("");
+        setPinCode("");
+        setAssigned(false);
+        setDeviceUUID("");
+        setDeviceModel("");
+        setAppVersion("");
+        setAndroidVersion("");
+    };
+
+    const openNew = () => {
+        resetForm();
+        // Mostra um UUID v4 fake apenas para visual (não será enviado no create)
+        setDeviceUUID(genUUIDv4());
+        setFormOpen(true);
+    };
+
+    const openEdit = (pin: PinProps) => {
+        setEditing(pin);
+        setName(pin.name);
+        setPinCode(pin.pin_code ?? "");
+        setAssigned(!!pin.assigned);
+        setDeviceUUID(pin.uuid ?? "");
+        setDeviceModel(pin.device_model ?? "");
+        setAppVersion(pin.app_version ?? "");
+        setAndroidVersion(pin.android_version ?? "");
+        setFormOpen(true);
+    };
+
+    const handleCopy = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            toast.success("Copiado!");
+        } catch {
+            toast.error("Não foi possível copiar.");
         }
     };
 
-    const handleUpdate = async (data: FormValues) => {
+    const handleDelete = async (id: number) => {
+        const result = await Swal.fire({
+            title: "Tem certeza?",
+            text: "Essa ação não poderá ser desfeita!",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonText: "Sim, excluir",
+            cancelButtonText: "Cancelar",
+        });
+        if (!result.isConfirmed) return;
+
         try {
-            const payload = {
-                username: data.username,
-                email: data.email,
-                ...(data.password ? { password: data.password } : {}),
-            };
-            const updated = await updateMyProfile(payload);
-            setUser(updated.user);
-            toast.success("Conta atualizada com sucesso!");
-            setDialogOpen(false);
-        } catch (err) {
-            toast.error(err instanceof Error ? err.message : "Erro ao atualizar a conta.");
+            await deletePin(id);
+            setPins((prev) => prev.filter((p) => p.id !== id));
+            toast.success("PIN excluído!");
+            if (editing?.id === id) resetForm();
+        } catch {
+            toast.error("Erro ao excluir PIN.");
+        }
+    };
+
+    const handleSubmit = async () => {
+        if (!name.trim()) {
+            toast.error("O nome é obrigatório");
+            return;
+        }
+
+        try {
+            if (editing?.id) {
+                // atualização: só nome e/ou atribuído
+                const updated = await updatePin(editing.id, {
+                    name: name.trim(),
+                    assigned,
+                });
+
+                setPins((prev) => prev.map((p) => (p.id === editing.id ? updated : p)));
+                setEditing(updated); // mantém na tela
+                toast.success("PIN atualizado!");
+            } else {
+                // criação: envia só o nome; PIN é gerado no backend
+                const created = await createPin({ name: name.trim() });
+                setPins((prev) => [created, ...prev]);
+                toast.success("PIN criado!");
+
+                // Preenche para exibir/copiar
+                setEditing(created);
+                setPinCode(created.pin_code ?? "");
+                setAssigned(!!created.assigned);
+                setDeviceUUID(created.uuid ?? deviceUUID); // se backend não mandar, mantém o fake exibido
+                setDeviceModel(created.device_model ?? "");
+                setAppVersion(created.app_version ?? "");
+                setAndroidVersion(created.android_version ?? "");
+            }
+        } catch {
+            toast.error("Erro ao salvar PIN.");
         }
     };
 
     return (
-        <div
-            className="
-        top-0 left-0 right-0 z-40
-        bg-[#3e3e3e]
-        h-14 sm:h-16 lg:h-[80px]
-        pl-0 lg:pl-[190px]
-      "
-        >
-            <div
-                className="
-          flex items-center justify-between h-full
-          px-3 sm:px-4
-          max-w-screen-xl mx-auto
-        "
-            >
-                {/* Ações/abas à esquerda */}
-                <div
-                    className="
-            flex items-center gap-2 sm:gap-3
-            overflow-x-auto
-            scrollbar-none
-            flex-wrap
-          "
-                >
+        <div className="flex flex-col lg:flex-row h-full w-full">
+            {/* HEADER + AÇÕES */}
+            <div className="lg:w-1/2 border-r p-0">
+                <div className="flex items-center justify-between bg-[#e85228] text-white px-4 py-3">
+                    <h2 className="text-lg font-semibold">Lista de PINs</h2>
                     <Button
-                        variant="outline"
-                        className="
-              bg-[#e74e15] text-white hover:text-[#e74e15]
-              h-8 sm:h-9 lg:h-10
-              px-3 sm:px-4
-              text-xs sm:text-sm
-              whitespace-nowrap
-            "
-                        asChild
+                        size="icon"
+                        className="bg-white text-[#e85228] hover:bg-white/90"
+                        onClick={openNew}
+                        title="Adicionar novo PIN"
                     >
-                        <Link href="/">QUESTIONÁRIO</Link>
+                        <Plus className="w-5 h-5" />
                     </Button>
-
-                    <Button
-                        variant="outline"
-                        className="
-              bg-transparent text-white hover:text-white hover:bg-[#e74e15]
-              h-8 sm:h-9 lg:h-10
-              px-3 sm:px-4
-              text-xs sm:text-sm
-              whitespace-nowrap
-            "
-                        asChild
-                    >
-                        <Link href="/dashboard/archived">ARQUIVADOS</Link>
-                    </Button>
-
-                    {/* Título do quiz: mostra a partir de md */}
-                    {isClientReady && selectedQuizTitle && (
-                        <p className="hidden md:block text-white text-xs sm:text-sm font-medium mt-0.5">
-                            Você está trabalhando no questionário:{" "}
-                            <span className="font-semibold text-orange-400">{selectedQuizTitle}</span>
-                        </p>
-                    )}
                 </div>
 
-                {/* Usuário / menu */}
-                <DropdownMenu onOpenChange={(o) => setOpen(o)}>
-                    <DropdownMenuTrigger asChild>
-                        <div className="flex items-center gap-2 cursor-pointer select-none">
-                            <Avatar className="w-8 h-8 sm:w-9 sm:h-9">
-                                <AvatarImage src="https://github.com/evandrobitencourt.png" />
-                                <AvatarFallback>EB</AvatarFallback>
-                            </Avatar>
+                {/* Busca */}
+                <div className="p-4">
+                    <Input
+                        placeholder="Termo para busca"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
 
-                            {/* Esconde o nome no xs (mostra a partir de sm) */}
-                            <span className="hidden sm:block text-white font-medium">
-                                {user?.username ?? "Usuário"}
-                            </span>
-
-                            {/* Chevron também só no sm+ para economizar espaço */}
-                            <ChevronDown
-                                className={`hidden sm:block h-4 w-4 text-white transition-transform ${open ? "rotate-180" : ""
-                                    }`}
-                            />
+                {/* Lista */}
+                <ScrollArea className="h-[calc(100vh-170px)] px-2">
+                    {loading ? (
+                        <div className="flex justify-center py-10">
+                            <FaSpinner className="animate-spin text-[#e85228] text-xl" />
                         </div>
-                    </DropdownMenuTrigger>
+                    ) : filtered.length === 0 ? (
+                        <p className="text-center text-gray-500 py-8">Nenhum PIN encontrado.</p>
+                    ) : (
+                        filtered.map((p) => (
+                            <div
+                                key={p.id}
+                                className="flex items-center justify-between px-2 py-3 border-b hover:bg-gray-50 cursor-pointer"
+                                onClick={() => openEdit(p)}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-full bg-gray-200 grid place-items-center text-gray-600">
+                                        <span className="text-lg">⚙️</span>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">{p.name}</p>
+                                        <p className="text-xs text-gray-500">{p.pin_code}</p>
+                                    </div>
+                                </div>
 
-                    <DropdownMenuContent align="end" className="w-64">
-                        <DropdownMenuLabel className="font-normal">
-                            <div className="flex flex-col">
-                                <span className="text-sm font-medium leading-none">
-                                    {user?.username ?? "Usuário"}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                    {user?.email ?? "sem e-mail"}
-                                </span>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        className="text-gray-500 hover:text-[#e85228]"
+                                        title="Copiar PIN"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCopy(p.pin_code ?? "");
+                                        }}
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                    </button>
+                                    {p.id && (
+                                        <button
+                                            className="text-gray-500 hover:text-red-600"
+                                            title="Excluir"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(p.id!);
+                                            }}
+                                        >
+                                            <Trash className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
-                        </DropdownMenuLabel>
-
-                        <DropdownMenuSeparator />
-
-                        <DropdownMenuItem>
-                            <DollarSign className="mr-2 h-4 w-4" />
-                            Relatório de créditos
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem onClick={() => setDialogOpen(true)}>
-                            <User className="mr-2 h-4 w-4" />
-                            Conta
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <Info className="mr-2 h-4 w-4" />
-                            Relatórios
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <Smartphone className="mr-2 h-4 w-4" />
-                            <Link href="/dashboard/pins">Administrar PINs</Link>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <Users className="mr-2 h-4 w-4" />
-                            Gerenciar usuários
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <User className="mr-2 h-4 w-4" />
-                            <Link href="/dashboard/interviewers">Gerenciar entrevistadores</Link>
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <Shield className="mr-2 h-4 w-4" />
-                            Administrar permissões
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <MessageCircle className="mr-2 h-4 w-4" />
-                            Integração com WhatsApp
-                        </DropdownMenuItem>
-
-                        <DropdownMenuSeparator />
-
-                        <DropdownMenuItem>
-                            <Languages className="mr-2 h-4 w-4" />
-                            Português
-                        </DropdownMenuItem>
-
-                        <DropdownMenuItem>
-                            <Languages className="mr-2 h-4 w-4" />
-                            Inglês
-                        </DropdownMenuItem>
-
-                        <DropdownMenuSeparator />
-
-                        <DropdownMenuItem onClick={handleLogout} className="text-red-600">
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Sair
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-
-                {/* Dialog de conta */}
-                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                    <DialogContent className="sm:max-w-[400px]">
-                        <DialogHeader>
-                            <DialogTitle>Editar conta</DialogTitle>
-                        </DialogHeader>
-                        <form onSubmit={handleSubmit(handleUpdate)} className="space-y-4">
-                            <div>
-                                <label className="text-sm font-medium">Nome</label>
-                                <Input type="text" {...register("username")} />
-                                {errors.username && (
-                                    <p className="text-red-500 text-sm">{errors.username.message}</p>
-                                )}
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium">E-mail</label>
-                                <Input type="email" {...register("email")} />
-                                {errors.email && (
-                                    <p className="text-red-500 text-sm">{errors.email.message}</p>
-                                )}
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium">Nova senha</label>
-                                <Input type="password" {...register("password")} />
-                                {errors.password && (
-                                    <p className="text-red-500 text-sm">{errors.password.message}</p>
-                                )}
-                            </div>
-                            <DialogFooter>
-                                <Button type="submit" className="bg-[#e74e15] text-white">
-                                    Salvar
-                                </Button>
-                            </DialogFooter>
-                        </form>
-                    </DialogContent>
-                </Dialog>
+                        ))
+                    )}
+                </ScrollArea>
             </div>
+
+            {/* Formulário */}
+            {formOpen && (
+                <div className="lg:w-1/2 pl-2">
+                    <div className="bg-[#e85228] text-white px-4 py-3">
+                        <h2 className="text-lg font-semibold">
+                            {editing ? "Detalhes do PIN" : "Adicionar novo PIN"}
+                        </h2>
+                    </div>
+
+                    <div className="p-4 space-y-3">
+                        {/* Nome (editável) */}
+                        <div>
+                            <Input
+                                placeholder="Nome"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className={name.trim() === "" ? "border-red-500" : ""}
+                            />
+                            {name.trim() === "" && (
+                                <p className="text-red-500 text-sm mt-1">
+                                    Campo obrigatório. O PIN só será salvo se o nome estiver preenchido corretamente.
+                                </p>
+                            )}
+                        </div>
+
+                        {/* PIN + copiar (read-only) */}
+                        <div className="flex items-center gap-2">
+                            <Input value={pinCode} readOnly className="font-mono" />
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => handleCopy(pinCode)}
+                                title="Copiar PIN"
+                                disabled={!pinCode}
+                            >
+                                <Copy className="w-4 h-4 mr-1" />
+                                Copiar
+                            </Button>
+                            {/* “Gerar” desabilitado (PIN é gerado no backend) */}
+                            <Button type="button" variant="outline" disabled title="Gerado automaticamente">
+                                Gerar
+                            </Button>
+                        </div>
+
+                        {/* Atribuído (editável) */}
+                        <label className="flex items-center gap-3 select-none">
+                            <input
+                                type="checkbox"
+                                checked={assigned}
+                                onChange={(e) => setAssigned(e.target.checked)}
+                                className="h-5 w-5 accent-[#e85228]"
+                            />
+                            <span className="text-sm font-medium">Atribuído</span>
+                        </label>
+
+                        <p className="text-gray-700 font-semibold mt-2">Aparelho atribuído</p>
+
+                        {/* Device Fields (read-only) */}
+                        <Input placeholder="UUID" value={deviceUUID} readOnly />
+                        <Input placeholder="Modelo do aparelho" value={deviceModel} readOnly />
+                        <Input placeholder="Versão do App" value={appVersion} readOnly />
+                        <Input placeholder="Versão do Android" value={androidVersion} readOnly />
+
+                        <div className="flex gap-2 pt-1">
+                            <Button
+                                onClick={handleSubmit}
+                                className="bg-[#e85228] text-white hover:bg-[#d9441e]"
+                            >
+                                {editing ? "Salvar" : "Salvar PIN"}
+                            </Button>
+                            <Button variant="outline" onClick={resetForm}>
+                                Cancelar
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
-};
-
-export default Header;
+}
