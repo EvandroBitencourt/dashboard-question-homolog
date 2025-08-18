@@ -66,7 +66,6 @@ function convertBooleansFromBackend(question: QuestionProps): QuestionProps {
   BOOLEAN_FIELDS.forEach((key) => {
     if (key in converted) {
       const value = converted[key as keyof QuestionProps];
-      // Explicitly handle different value types
       // @ts-ignore
       if (value === 1 || value === "1" || value === true) {
         converted[key] = true;
@@ -112,14 +111,12 @@ function SwitchField({
         aria-pressed={value}
         onClick={handleClick}
         disabled={disabled}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${
-          value ? "bg-orange-500" : "bg-gray-300"
-        } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${value ? "bg-orange-500" : "bg-gray-300"
+          } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out ${
-            value ? "translate-x-6" : "translate-x-1"
-          }`}
+          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 ease-in-out ${value ? "translate-x-6" : "translate-x-1"
+            }`}
         />
       </button>
       <label
@@ -182,8 +179,7 @@ export default function Question() {
           setQuestions(convertedQuestions);
         }
       })
-      .catch((err) => {
-        // console.error("❌ Erro ao buscar questões:", err);
+      .catch(() => {
         setQuestions([]);
       })
       .finally(() => setLoading(false));
@@ -207,8 +203,7 @@ export default function Question() {
           });
         }
       })
-      .catch((err) => {
-        // console.error("❌ Erro ao buscar questão com opções:", err);
+      .catch(() => {
         setSelectedQuestionFull(null);
       });
   }, [selectedQuestionId]);
@@ -247,8 +242,8 @@ export default function Question() {
       setOpenDialog(false);
       setQuestionType("");
       setSelectedQuestionId(newQuestion.id);
-    } catch (err) {
-      console.error("❌ Erro ao criar questão e opção:", err);
+    } catch {
+      // noop
     }
   }, [selectedQuizId, questionType]);
 
@@ -260,20 +255,17 @@ export default function Question() {
       setUpdateLoading(true);
 
       try {
-        // Pass fields directly; backend conversion is handled in updateQuestion
         const updated = await updateQuestion(
           selectedQuestionFull.question.id,
           fields
         );
 
         if (updated) {
-          // Update local state with proper boolean conversion
           setSelectedQuestionFull((prev) => {
             if (!prev) return prev;
 
             const updatedQuestion = { ...prev.question };
 
-            // Apply updates with proper boolean handling
             Object.entries(fields).forEach(([key, value]) => {
               if (BOOLEAN_FIELDS.includes(key as any)) {
                 // @ts-ignore
@@ -290,7 +282,6 @@ export default function Question() {
             };
           });
 
-          // Update title in questions list if changed
           if (fields.title !== undefined) {
             setQuestions((prev) =>
               prev.map((q) =>
@@ -301,8 +292,6 @@ export default function Question() {
             );
           }
         }
-      } catch (err) {
-        console.error("❌ Erro ao atualizar questão:", err);
       } finally {
         setUpdateLoading(false);
       }
@@ -326,73 +315,59 @@ export default function Question() {
       try {
         await deleteQuestion(selectedQuestionFull.question.id);
 
-        // Remove visualmente da lista
         setQuestions((prev) =>
           prev.filter((q) => q.id !== selectedQuestionFull.question.id)
         );
 
-        // Limpa seleção
         setSelectedQuestionId(null);
         setSelectedQuestionFull(null);
 
-        Swal.fire(
-          "Excluído!",
-          "A questão foi removida com sucesso.",
-          "success"
-        );
-      } catch (err) {
-        console.error("Erro ao excluir questão:", err);
+        Swal.fire("Excluído!", "A questão foi removida com sucesso.", "success");
+      } catch {
         Swal.fire("Erro", "Não foi possível excluir a questão.", "error");
       }
     }
   };
 
-  // Debounced title update to prevent excessive API calls
+  // Debounced title update
   const [titleUpdateTimeout, setTitleUpdateTimeout] =
     useState<NodeJS.Timeout | null>(null);
 
   const handleTitleChange = useCallback(
     (newTitle: string) => {
-      // Update local state immediately for responsive UI
       setSelectedQuestionFull((prev) =>
         prev
           ? {
-              ...prev,
-              question: { ...prev.question, title: newTitle },
-            }
+            ...prev,
+            question: { ...prev.question, title: newTitle },
+          }
           : prev
       );
 
-      // Clear existing timeout
-      if (titleUpdateTimeout) {
-        clearTimeout(titleUpdateTimeout);
-      }
+      if (titleUpdateTimeout) clearTimeout(titleUpdateTimeout);
 
-      // Set new timeout for API update
       const timeout = setTimeout(() => {
         handleUpdateQuestion({ title: newTitle });
-      }, 500); // 500ms debounce
+      }, 500);
 
       setTitleUpdateTimeout(timeout);
     },
     [handleUpdateQuestion, titleUpdateTimeout]
   );
 
-  // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
-      if (titleUpdateTimeout) {
-        clearTimeout(titleUpdateTimeout);
-      }
+      if (titleUpdateTimeout) clearTimeout(titleUpdateTimeout);
     };
   }, [titleUpdateTimeout]);
 
   return (
     <main className="pt-[80px] sm:pl-[190px]">
-      <div className="flex h-[calc(100vh-80px)]">
+      {/* ✅ mobile empilha; desktop mantém duas colunas */}
+      <div className="flex md:flex-row flex-col h-[calc(100vh-80px)]">
         {/* Questions Sidebar */}
-        <aside className="w-1/3 border-r bg-white p-4 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
+        <aside className="md:w-1/3 w-full md:border-r border-b bg-white md:p-4 p-3 md:h-auto h-[48vh] flex flex-col">
+          <div className="flex items-center justify-between md:mb-4 mb-3 sticky top-0 z-10 bg-white pb-2">
             <h2 className="font-bold text-lg">QUESTÕES</h2>
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
               <DialogTrigger asChild>
@@ -400,7 +375,8 @@ export default function Question() {
                   <Plus className="w-4 h-4" /> Nova
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
+              {/* ✅ cabe melhor no mobile */}
+              <DialogContent className="sm:max-w-md w-[95vw] max-w-none">
                 <DialogHeader>
                   <DialogTitle>Selecionar tipo de questão</DialogTitle>
                 </DialogHeader>
@@ -431,10 +407,7 @@ export default function Question() {
                   >
                     Cancelar
                   </Button>
-                  <Button
-                    onClick={handleCreateQuestion}
-                    disabled={!questionType}
-                  >
+                  <Button onClick={handleCreateQuestion} disabled={!questionType}>
                     Selecionar
                   </Button>
                 </div>
@@ -442,6 +415,7 @@ export default function Question() {
             </Dialog>
           </div>
 
+          {/* ✅ rola só a lista no mobile */}
           {loading ? (
             <div className="flex justify-center items-center py-20">
               <div className="animate-spin text-3xl text-gray-500">
@@ -449,7 +423,7 @@ export default function Question() {
               </div>
             </div>
           ) : (
-            <ScrollArea className="h-full pr-2">
+            <ScrollArea className="flex-1 pr-2">
               {questions.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">
                   Nenhuma pergunta encontrada.
@@ -458,11 +432,10 @@ export default function Question() {
                 questions.map((q, index) => (
                   <div
                     key={q.id}
-                    className={`p-3 border rounded mb-2 cursor-pointer transition-colors ${
-                      selectedQuestionId === q.id
+                    className={`p-3 border rounded mb-2 cursor-pointer transition-colors ${selectedQuestionId === q.id
                         ? "bg-orange-100 border-orange-500"
                         : "bg-white hover:bg-slate-100"
-                    }`}
+                      }`}
                     onClick={() => setSelectedQuestionId(q.id)}
                   >
                     <p className="font-medium">{`Q${index + 1}`}</p>
@@ -480,7 +453,7 @@ export default function Question() {
         </aside>
 
         {/* Question Details */}
-        <section className="flex-1 p-6 overflow-y-auto">
+        <section className="flex-1 md:p-6 p-4 overflow-y-auto md:h-auto h-[52vh]">
           {selectedQuestionFull && <QuestionActions />}
           <div className="flex justify-between items-center mb-4">
             <h3 className="font-semibold text-xl">Detalhes da Questão</h3>
@@ -567,19 +540,18 @@ export default function Question() {
                   />
                   {(selectedQuestionFull.question.type === "single_choice" ||
                     selectedQuestionFull.question.type ===
-                      "multiple_choice") && (
-                    <SwitchField
-                      label="Embaralhar opções"
-                      value={selectedQuestionFull.question.shuffle_options}
-                      onChange={(val) =>
-                        handleUpdateQuestion({ shuffle_options: val })
-                      }
-                      disabled={updateLoading}
-                    />
-                  )}
+                    "multiple_choice") && (
+                      <SwitchField
+                        label="Embaralhar opções"
+                        value={selectedQuestionFull.question.shuffle_options}
+                        onChange={(val) =>
+                          handleUpdateQuestion({ shuffle_options: val })
+                        }
+                        disabled={updateLoading}
+                      />
+                    )}
                 </div>
 
-                {/* Show update status */}
                 {updateLoading && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <FaSpinner className="animate-spin" />
@@ -611,17 +583,16 @@ export default function Question() {
                 </h4>
                 {(selectedQuestionFull.question.type === "single_choice" ||
                   selectedQuestionFull.question.type === "multiple_choice") && (
-                  <SingleChoiceForm
-                    question={selectedQuestionFull.question}
-                    options={selectedQuestionFull.options || []}
-                    onOptionsChange={(updated) => {
-                      setSelectedQuestionFull((prev) =>
-                        prev ? { ...prev, options: updated } : prev
-                      );
-                    }}
-                  />
-                )}
-                {/* Placeholder for other question types */}
+                    <SingleChoiceForm
+                      question={selectedQuestionFull.question}
+                      options={selectedQuestionFull.options || []}
+                      onOptionsChange={(updated) => {
+                        setSelectedQuestionFull((prev) =>
+                          prev ? { ...prev, options: updated } : prev
+                        );
+                      }}
+                    />
+                  )}
                 {selectedQuestionFull.question.type !== "single_choice" &&
                   selectedQuestionFull.question.type !== "multiple_choice" && (
                     <div className="text-gray-500 italic py-8 text-center">
