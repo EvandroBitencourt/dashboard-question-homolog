@@ -46,20 +46,20 @@ export default function Devices() {
         setErr(null);
 
         try {
-            console.log("[DEVICES] quizId:", selectedQuizId);
+            ///console.log("[DEVICES] quizId:", selectedQuizId);
             const [leftRaw, rightRaw] = await Promise.all([
                 listAttachedPins(Number(selectedQuizId)),
                 listAvailablePins(Number(selectedQuizId)),
             ]);
 
-            console.log("[DEVICES] raw attached:", leftRaw);
-            console.log("[DEVICES] raw available:", rightRaw);
+            // console.log("[DEVICES] raw attached:", leftRaw);
+            // console.log("[DEVICES] raw available:", rightRaw);
 
-            setDebug({
-                quizId: selectedQuizId,
-                envApi: process?.env?.NEXT_PUBLIC_API_URL ?? "(sem NEXT_PUBLIC_API_URL)",
-                leftRaw, rightRaw,
-            });
+            // setDebug({
+            //     quizId: selectedQuizId,
+            //     envApi: process?.env?.NEXT_PUBLIC_API_URL ?? "(sem NEXT_PUBLIC_API_URL)",
+            //     leftRaw, rightRaw,
+            // });
 
             const left = toDevices(leftRaw).filter(x => Number.isFinite(x.id)).sort(byName);
             const right = toDevices(rightRaw).filter(x => Number.isFinite(x.id)).sort(byName);
@@ -146,8 +146,8 @@ export default function Devices() {
 
             {/* DEBUG UI */}
             <div className="text-xs rounded border p-2 bg-neutral-50">
-                <div><b>quizId:</b> {String(selectedQuizId)}</div>
-                <div><b>NEXT_PUBLIC_API_URL:</b> {String(process?.env?.NEXT_PUBLIC_API_URL ?? "(unset)")}</div>
+                {/* <div><b>quizId:</b> {String(selectedQuizId)}</div>
+                <div><b>NEXT_PUBLIC_API_URL:</b> {String(process?.env?.NEXT_PUBLIC_API_URL ?? "(unset)")}</div> */}
                 {err && <div className="text-red-600"><b>Erro:</b> {err}</div>}
                 {debug && (
                     <details>
