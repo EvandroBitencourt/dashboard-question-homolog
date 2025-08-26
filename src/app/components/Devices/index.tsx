@@ -46,7 +46,7 @@ export default function Devices() {
         setErr(null);
 
         try {
-            ///console.log("[DEVICES] quizId:", selectedQuizId);
+            // console.log("[DEVICES] quizId:", selectedQuizId);
             const [leftRaw, rightRaw] = await Promise.all([
                 listAttachedPins(Number(selectedQuizId)),
                 listAvailablePins(Number(selectedQuizId)),
