@@ -433,8 +433,8 @@ export default function Question() {
                   <div
                     key={q.id}
                     className={`p-3 border rounded mb-2 cursor-pointer transition-colors ${selectedQuestionId === q.id
-                        ? "bg-orange-100 border-orange-500"
-                        : "bg-white hover:bg-slate-100"
+                      ? "bg-orange-100 border-orange-500"
+                      : "bg-white hover:bg-slate-100"
                       }`}
                     onClick={() => setSelectedQuestionId(q.id)}
                   >
@@ -517,7 +517,7 @@ export default function Question() {
                 {/* Boolean Options */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
                   <SwitchField
-                    label="Campo obrigatório"
+                    label="Questão obrigatória"
                     value={selectedQuestionFull.question.is_required}
                     onChange={(val) =>
                       handleUpdateQuestion({ is_required: val })
