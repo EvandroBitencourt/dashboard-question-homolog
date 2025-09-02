@@ -115,22 +115,22 @@ export async function deleteQuestionOption(id: number): Promise<boolean> {
 
 // Lista todas as opções de uma questão específica
 export async function listQuestionOptionsByQuestionId(
-  question_id: number
+    question_id: number
 ): Promise<QuestionOptionProps[]> {
-  try {
-    const headers = await getServerAuthHeaders();
-    const res = await fetch(`${BASE_URL}?question_id=${question_id}`, {
-      method: "GET",
-      headers,
-    });
+    try {
+        const headers = await getServerAuthHeaders();
+        const res = await fetch(`${BASE_URL}?question_id=${question_id}`, {
+            method: "GET",
+            headers,
+        });
 
-    if (!res.ok) {
-      throw new Error("Erro ao listar opções da questão");
+        if (!res.ok) {
+            throw new Error("Erro ao listar opções da questão");
+        }
+
+        return await res.json();
+    } catch (err) {
+        console.error("Erro ao buscar opções da questão:", err);
+        return [];
     }
-
-    return await res.json();
-  } catch (err) {
-    console.error("Erro ao buscar opções da questão:", err);
-    return [];
-  }
 }
