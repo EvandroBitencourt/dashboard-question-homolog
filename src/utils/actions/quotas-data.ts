@@ -5,20 +5,15 @@ const BASE_API_URL = `${API_BASE}/api`;
 const BASE_URL = `${BASE_API_URL}/quota`;
 
 async function getServerAuthHeaders(): Promise<HeadersInit> {
-  try {
-    const res = await fetch("/api/token", { method: "GET", credentials: "include" });
-    if (!res.ok) throw new Error(`Token request failed: ${res.status}`);
-    const data = await res.json();
-    if (!data.token) throw new Error("Token não encontrado na resposta");
-    return {
-      Authorization: `Bearer ${data.token}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    };
-  } catch (err) {
-    console.error("Erro ao obter headers de autenticação:", err);
-    throw new Error("Falha na autenticação");
-  }
+  const res = await fetch("/api/token", { method: "GET", credentials: "include" });
+  if (!res.ok) throw new Error(`Token request failed: ${res.status}`);
+  const data = await res.json();
+  if (!data.token) throw new Error("Token não encontrado na resposta");
+  return {
+    Authorization: `Bearer ${data.token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
 }
 
 function normalizeQuotaRow(row: any): QuotasProps {
@@ -27,19 +22,16 @@ function normalizeQuotaRow(row: any): QuotasProps {
     quiz_id: Number(row.quiz_id),
     question_id: Number(row.question_id),
     question_option_id: Number(row.question_option_id),
+    parent_quota_id: row.parent_quota_id != null ? Number(row.parent_quota_id) : null, // ✅
     limit: row.limit != null ? Number(row.limit) : 0,
     current_count: row.current_count != null ? Number(row.current_count) : 0,
-    status: row.status ?? undefined,
-    created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
-
-    // 🔻 preserva os campos do JOIN (eram descartados antes)
+    created_at: row.created_at,
+    updated_at: row.updated_at,
     option_label: row.option_label ?? null,
     question_title: row.question_title ?? null,
     question_type: row.question_type ?? null,
   };
 }
-
 
 export async function createQuota(
   data: Omit<QuotasProps, "id" | "created_at" | "updated_at">
@@ -56,28 +48,20 @@ export async function createQuota(
 }
 
 export async function getQuotasByQuiz(quizId: number): Promise<QuotasProps[]> {
+  const headers = await getServerAuthHeaders();
+  const url = `${BASE_API_URL}/quota?quiz_id=${quizId}`;
+  const res = await fetch(url, { method: "GET", headers });
+  const text = await res.text();
+  if (res.status === 404) return [];
+  if (!res.ok) throw new Error(`Erro ao buscar quotas por quiz: ${res.status} - ${text}`);
+  let payload: any;
   try {
-    const headers = await getServerAuthHeaders();
-    const url = `${BASE_API_URL}/quota?quiz_id=${quizId}`;
-    const res = await fetch(url, { method: "GET", headers });
-
-    const text = await res.text();
-    if (res.status === 404) return [];
-    if (!res.ok) throw new Error(`Erro ao buscar quotas por quiz: ${res.status} - ${text}`);
-
-    let payload: any;
-    try {
-      payload = JSON.parse(text);
-    } catch {
-      throw new Error(`Resposta inválida do servidor: ${text}`);
-    }
-
-    const arr = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
-    return arr.map(normalizeQuotaRow);
-  } catch (error) {
-    console.error(error);
-    return [];
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`Resposta inválida do servidor: ${text}`);
   }
+  const arr = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+  return arr.map(normalizeQuotaRow);
 }
 
 export async function updateQuota(id: number, data: Partial<Omit<QuotasProps, "id" | "created_at" | "updated_at">>): Promise<QuotasProps> {
@@ -99,17 +83,37 @@ export async function deleteQuota(id: number): Promise<{ message: string }> {
   return res.json();
 }
 
-export async function bulkCreateQuotasForQuestion(questionId: number, quizId: number, defaultLimit = 0): Promise<any> {
+/**
+ * CRIA cotas em lote para uma pergunta.
+ * Se parentQuotaId for informado, as cotas serão filhas dessa quota.
+ */
+// utils/actions/quotas-data.ts
+
+// ✅ agora com parent_quota_id
+// antes: export async function bulkCreateQuotasForQuestion(questionId:number, quizId:number, defaultLimit=0)
+export async function bulkCreateQuotasForQuestion(
+  questionId: number,
+  quizId: number,
+  defaultLimit = 0,
+  parentQuotaId?: number           // <- opcional
+): Promise<any> {
   const headers = await getServerAuthHeaders();
   const res = await fetch(`${BASE_URL}/bulk/question/${questionId}`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ quiz_id: quizId, default_limit: defaultLimit }),
+    body: JSON.stringify({
+      quiz_id: quizId,
+      default_limit: Number(defaultLimit),
+      ...(parentQuotaId ? { parent_quota_id: Number(parentQuotaId) } : {}), // <- só quando tiver pai
+    }),
   });
   if (!res.ok) throw new Error(`Erro ao criar quotas em lote: ${res.status} - ${await res.text()}`);
   return res.json();
 }
 
+
+
+/** Atualiza apenas o limite */
 export async function updateQuotaLimit(quotaId: number, limit: number): Promise<any> {
   const headers = await getServerAuthHeaders();
   const res = await fetch(`${BASE_URL}/${quotaId}/limit`, {
@@ -121,9 +125,19 @@ export async function updateQuotaLimit(quotaId: number, limit: number): Promise<
   return res.json();
 }
 
-export async function checkQuestionHasQuotas(questionId: number): Promise<{ has_quotas: boolean; quota_count: number }> {
+/**
+ * Verifica se já existem quotas para uma pergunta.
+ * Se parentQuotaId vier, a checagem é feita no contexto desse pai.
+ */
+export async function checkQuestionHasQuotas(
+  questionId: number,
+  parentQuotaId?: number
+): Promise<{ has_quotas: boolean; quota_count: number }> {
   const headers = await getServerAuthHeaders();
-  const res = await fetch(`${BASE_URL}/check/question/${questionId}`, { method: "GET", headers });
+  const url =
+    `${BASE_URL}/check/question/${questionId}` +
+    (parentQuotaId ? `?parent_quota_id=${parentQuotaId}` : "");
+  const res = await fetch(url, { method: "GET", headers });
   if (res.status === 404) return { has_quotas: false, quota_count: 0 };
   if (!res.ok) throw new Error(`Erro ao verificar quotas: ${res.status} - ${await res.text()}`);
   const result = await res.json();

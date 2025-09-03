@@ -10,6 +10,9 @@ export interface QuotasProps {
   created_at?: string | null;
   updated_at?: string | null;
 
+  // NOVO
+  parent_quota_id?: number | null;
+
   // extras do JOIN
   option_label?: string | null;
   question_title?: string | null;
