@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Copy,
   SkipForward,
   Link2,
   ArrowUpDown,
-  MessageSquareWarning, // novo ícone
-  Hand
+  MessageSquareWarning,
+  Hand,
 } from "lucide-react";
 import {
   Tooltip,
@@ -15,52 +15,84 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import Swal from "sweetalert2";
 
 import { useQuiz } from "@/context/QuizContext";
-import { listQuestionsByQuiz } from "@/utils/actions/question-data";
-import { QuestionProps } from "@/utils/types/question";
+import {
+  listQuestionsByQuiz,
+  getQuestionWithOptions,
+} from "@/utils/actions/question-data";
+import { createQuestionRule } from "@/utils/actions/question-rule-data";
+import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
 
-const mockForms = [
-  "Teste Zidane",
-  "Cota 3 - Lucas - Jun/2025",
-  "Cota 4 - Lucas - Jun/2025",
-  "Novo Questionário",
-  "teste evandro",
-];
-
-const mockOptions = ["Masculino", "Feminino", "16 a 17 anos", "18 a 20 anos", "25 a 30 anos"];
-const mockStates = ["selecionado", "não selecionado"];
-const mockNumberStates = ["maior que", "maior ou igual", "menor que", "menor ou igual", "diferente", "igual"];
-const mockDestinations = ["Q2", "Q3", "Q4", "Q5", "Q8", "Q30", "Q31"];
-
-export default function QuestionActions() {
+/** Props é opcional para manter retrocompatibilidade.
+ *  Se você passar currentQuestionId, o modal de Pulo usa essa questão como base.
+ *  Se NÃO passar, o modal permite escolher a questão base num dropdown.
+ */
+export default function QuestionActions({
+  currentQuestionId,
+}: {
+  currentQuestionId?: number;
+}) {
   const { selectedQuizId } = useQuiz();
 
+  // Modais
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [showReorderModal, setShowReorderModal] = useState(false);
   const [showRefuseModal, setShowRefuseModal] = useState(false);
-
-
-  // NOVO: modal de restrição
   const [showRestrictModal, setShowRestrictModal] = useState(false);
 
+  // Estado geral
   const [copies, setCopies] = useState(1);
   const [selectedForm, setSelectedForm] = useState("");
-
-  const [isNumber, setIsNumber] = useState(false);
-  const [option, setOption] = useState("");
-  const [state, setState] = useState("");
-  const [value, setValue] = useState("");
-  const [destination, setDestination] = useState("");
 
   const [questions, setQuestions] = useState<QuestionProps[]>([]);
   const [orders, setOrders] = useState<Record<number, number>>({});
 
-  // carrega questões quando qualquer modal que precise delas abre
+  // ====== PULO ======
+  const [baseQuestionId, setBaseQuestionId] = useState<number | "">(
+    currentQuestionId ?? ""
+  ); // questão base (se não vier por props, usuário escolhe)
+  const [baseOptions, setBaseOptions] = useState<QuestionOptionProps[]>([]);
+  const [isNumber, setIsNumber] = useState(false);
+  const [optionId, setOptionId] = useState<number | "">("");
+  const [state, setState] = useState("");
+  const [value, setValue] = useState("");
+  const [destination, setDestination] = useState<number | "">("");
+
+  // Mocks que ainda não vamos integrar (outros modais)
+  const mockForms = useMemo(
+    () => [
+      "Teste Zidane",
+      "Cota 3 - Lucas - Jun/2025",
+      "Cota 4 - Lucas - Jun/2025",
+      "Novo Questionário",
+      "teste evandro",
+    ],
+    []
+  );
+  const mockStates = useMemo(
+    () => ["selecionado", "não selecionado"],
+    []
+  );
+  const mockNumberStates = useMemo(
+    () => ["maior que", "maior ou igual", "menor que", "menor ou igual", "diferente", "igual"],
+    []
+  );
+
+  // Quando a prop mudar, sincroniza baseQuestionId
   useEffect(() => {
-    const needsQuestions = showReorderModal || showRestrictModal;
+    if (typeof currentQuestionId === "number") {
+      setBaseQuestionId(currentQuestionId);
+    }
+  }, [currentQuestionId]);
+
+  // Carrega lista de questões quando qualquer modal que precise delas abre
+  useEffect(() => {
+    const needsQuestions =
+      showReorderModal || showRestrictModal || showSkipModal || showLinkModal;
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
@@ -68,14 +100,118 @@ export default function QuestionActions() {
         setQuestions(res);
         if (showReorderModal) {
           const initialOrders: Record<number, number> = {};
-          res.forEach((q, i) => {
-            initialOrders[q.id] = i + 1;
-          });
+          res.forEach((q, i) => (initialOrders[q.id] = i + 1));
           setOrders(initialOrders);
         }
       }
     });
-  }, [selectedQuizId, showReorderModal, showRestrictModal]);
+  }, [selectedQuizId, showReorderModal, showRestrictModal, showSkipModal, showLinkModal]);
+
+  // Quando abrir o modal de pulo e houver questão base, carrega opções reais dessa questão
+  useEffect(() => {
+    if (!showSkipModal) return;
+
+    async function loadOptions(qid: number) {
+      const res = await getQuestionWithOptions(qid);
+      setBaseOptions(res?.options ?? []);
+    }
+
+    if (typeof baseQuestionId === "number") {
+      loadOptions(baseQuestionId);
+    } else {
+      setBaseOptions([]);
+    }
+  }, [showSkipModal, baseQuestionId]);
+
+  // Helper: label amigável para uma questão
+  const getQuestionLabel = (q: QuestionProps) =>
+    `${q.variable || `Q${q.id}`} — ${q.title || "-"}`;
+
+  // ====== SALVAR REGRA DE PULO ======
+  async function handleSaveSkip() {
+    try {
+      if (!selectedQuizId) throw new Error("Quiz não selecionado.");
+      if (typeof baseQuestionId !== "number")
+        throw new Error("Selecione a questão base.");
+      if (!destination) throw new Error("Selecione o destino.");
+
+      // monta UMA condição (lógica AND por padrão)
+      let operator: string;
+      let condition: any;
+
+      if (!isNumber) {
+        if (!optionId) throw new Error("Selecione a opção.");
+        if (!state) throw new Error("Selecione o estado.");
+        operator = state === "selecionado" ? "selected" : "not_selected";
+        condition = {
+          condition_question_id: baseQuestionId,
+          operator,
+          option_id: Number(optionId),
+          compare_value: null,
+          is_number: 0,
+        };
+      } else {
+        if (!state) throw new Error("Selecione o estado numérico.");
+        if (value === "") throw new Error("Informe o valor.");
+        const map: Record<string, string> = {
+          "maior que": "gt",
+          "maior ou igual": "gte",
+          "menor que": "lt",
+          "menor ou igual": "lte",
+          diferente: "neq",
+          igual: "eq",
+        };
+        operator = map[state];
+        condition = {
+          condition_question_id: baseQuestionId,
+          operator,
+          option_id: null,
+          compare_value: String(value),
+          is_number: 1,
+        };
+      }
+
+      // payload da regra
+      const payload = {
+        quiz_id: Number(selectedQuizId),
+        source_question_id: Number(baseQuestionId),
+        type: "skip" as const,
+        logic: "AND" as const,
+        target_question_id: Number(destination),
+        sort_order: 0,
+        is_active: 1,
+        conditions: [condition],
+      };
+
+      await createQuestionRule(payload);
+
+      await Swal.fire({
+        icon: "success",
+        title: "Regra de pulo criada!",
+        timer: 1400,
+        showConfirmButton: false,
+      });
+
+      // limpa e fecha
+      setShowSkipModal(false);
+      setIsNumber(false);
+      setOptionId("");
+      setState("");
+      setValue("");
+      setDestination("");
+      // mantém baseQuestionId (se veio por props), senão deixa o usuário decidir da próxima vez
+      if (typeof currentQuestionId !== "number") {
+        setBaseOptions([]);
+        setBaseQuestionId("");
+      }
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Erro ao salvar",
+        text: err?.message ?? String(err),
+      });
+    }
+  }
 
   return (
     <TooltipProvider>
@@ -163,9 +299,13 @@ export default function QuestionActions() {
       {showCopyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-800">Copiar Questão</h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              Copiar Questão
+            </h2>
             <div className="mb-4">
-              <label className="block text-sm text-gray-700 mb-1">Número de cópias</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Número de cópias
+              </label>
               <input
                 type="number"
                 min={1}
@@ -175,7 +315,9 @@ export default function QuestionActions() {
               />
             </div>
             <div className="mb-6">
-              <label className="block text-sm text-gray-700 mb-1">Formulário</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Formulário
+              </label>
               <select
                 value={selectedForm}
                 onChange={(e) => setSelectedForm(e.target.value)}
@@ -206,118 +348,66 @@ export default function QuestionActions() {
         </div>
       )}
 
-      {/* ================= MODAL: RESTRIÇÃO (NOVO) ================= */}
+      {/* ================= MODAL: RESTRIÇÃO (apenas UI por enquanto) ================= */}
       {showRestrictModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6">
-            <h2 className="text-lg font-semibold mb-6 text-gray-800">Editar Restrição</h2>
+            <h2 className="text-lg font-semibold mb-6 text-gray-800">
+              Editar Restrição
+            </h2>
 
-            {/* cabeçalho tipo “Antes de Qx” – opcional/estático aqui */}
             <p className="text-sm text-gray-600 mb-4">Antes de Q?</p>
 
             <div className="rounded border p-4">
-              {/* Toggle numérico */}
               <label className="flex items-center gap-2 text-sm text-gray-700 mb-6">
                 <input
                   type="checkbox"
-                  checked={isNumber}
-                  onChange={() => {
-                    setIsNumber(!isNumber);
-                    setOption("");
-                    setState("");
-                    setValue("");
-                  }}
                   className="accent-orange-500"
+                  disabled
                 />
                 Numérico
               </label>
 
-              {/* Linha principal: Questão / Opção / Estado */}
               <div className="grid grid-cols-12 gap-4 mb-6">
                 <div className="col-span-12 md:col-span-4">
-                  <label className="block text-sm text-gray-700 mb-1">Questão</label>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Questão
+                  </label>
                   <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
                     <option value="" disabled selected>
                       A Questão é OBRIGATÓRIA
                     </option>
                     {questions.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.variable ? `${q.variable}` : `Q${q.id}`} — {q.title || "-"}
+                        {getQuestionLabel(q)}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                {!isNumber && (
-                  <div className="col-span-12 md:col-span-4">
-                    <label className="block text-sm text-gray-700 mb-1">Opção</label>
-                    <select
-                      value={option}
-                      onChange={(e) => setOption(e.target.value)}
-                      className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
-                    >
-                      <option value="" disabled>
-                        A Opção é OBRIGATÓRIA
-                      </option>
-                      {mockOptions.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <div className="col-span-12 md:col-span-4">
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Opção
+                  </label>
+                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
+                    <option value="" disabled>
+                      A Opção é OBRIGATÓRIA
+                    </option>
+                  </select>
+                </div>
 
                 <div className="col-span-12 md:col-span-4">
-                  <label className="block text-sm text-gray-700 mb-1">Estado</label>
-                  {!isNumber ? (
-                    <select
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
-                    >
-                      <option value="" disabled>
-                        O estado é OBRIGATÓRIO
-                      </option>
-                      {mockStates.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="grid grid-cols-12 gap-3">
-                      <div className="col-span-7">
-                        <select
-                          value={state}
-                          onChange={(e) => setState(e.target.value)}
-                          className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
-                        >
-                          <option value="" disabled>
-                            O estado é OBRIGATÓRIO
-                          </option>
-                          {mockNumberStates.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="col-span-5">
-                        <input
-                          type="number"
-                          value={value}
-                          onChange={(e) => setValue(e.target.value)}
-                          className="w-full border-b-2 border-red-500 px-2 py-1 text-gray-800"
-                          placeholder="Valor"
-                        />
-                      </div>
-                    </div>
-                  )}
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Estado
+                  </label>
+                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
+                    <option value="" disabled>
+                      O estado é OBRIGATÓRIO
+                    </option>
+                  </select>
                 </div>
               </div>
 
-              {/* Ações +OU / +E */}
               <div className="flex items-center gap-3 mb-6">
                 <button className="px-3 py-2 rounded bg-blue-600 text-white text-sm opacity-70 cursor-not-allowed">
                   + OU
@@ -327,34 +417,28 @@ export default function QuestionActions() {
                 </button>
               </div>
 
-              {/* Ação: Pule para / Alvo */}
               <div className="grid grid-cols-12 gap-4">
                 <div className="col-span-12 md:col-span-7">
-                  <label className="block text-sm text-gray-700 mb-1">Pule para</label>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Pule para
+                  </label>
                   <select className="w-full border-b-2 border-gray-300 px-2 py-1 bg-transparent text-gray-800">
                     <option value="">Selecione</option>
                     {questions.map((q) => (
                       <option key={q.id} value={q.id}>
-                        {q.variable ? `${q.variable}` : `Q${q.id}`} — {q.title || "-"}
+                        {getQuestionLabel(q)}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="col-span-12 md:col-span-5">
-                  <label className="block text-sm text-gray-700 mb-1">Alvo</label>
-                  <select
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
-                  >
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Alvo
+                  </label>
+                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
                     <option value="" disabled>
                       O Alvo é OBRIGATÓRIO
                     </option>
-                    {mockDestinations.map((dest) => (
-                      <option key={dest} value={dest}>
-                        {dest}
-                      </option>
-                    ))}
                   </select>
                 </div>
               </div>
@@ -375,11 +459,42 @@ export default function QuestionActions() {
         </div>
       )}
 
-      {/* ================= MODAL: PULAR ================= */}
+      {/* ================= MODAL: PULAR (conectado à API) ================= */}
       {showSkipModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-800">Editar regra de pulo</h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              Editar regra de pulo
+            </h2>
+
+            {/* Questão base: se não veio por props, deixa escolher */}
+            {typeof currentQuestionId !== "number" ? (
+              <div className="mb-4">
+                <label className="block text-sm text-gray-700 mb-1">
+                  Questão base
+                </label>
+                <select
+                  value={baseQuestionId}
+                  onChange={(e) =>
+                    setBaseQuestionId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800"
+                >
+                  <option value="">Selecione a questão</option>
+                  {questions.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {getQuestionLabel(q)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 mb-2">
+                Usando a questão atual como base.
+              </p>
+            )}
 
             <label className="flex items-center mb-4 gap-2 text-sm text-gray-700">
               <input
@@ -387,11 +502,12 @@ export default function QuestionActions() {
                 checked={isNumber}
                 onChange={() => {
                   setIsNumber(!isNumber);
-                  setOption("");
+                  setOptionId("");
                   setState("");
                   setValue("");
                 }}
                 className="accent-orange-500"
+                disabled={typeof baseQuestionId !== "number"}
               />
               É Número
             </label>
@@ -399,28 +515,34 @@ export default function QuestionActions() {
             {!isNumber ? (
               <div className="flex gap-4 mb-4">
                 <div className="w-1/2">
-                  <label className="block text-sm text-gray-700 mb-1">Opção</label>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Opção
+                  </label>
                   <select
-                    value={option}
-                    onChange={(e) => setOption(e.target.value)}
+                    value={optionId}
+                    onChange={(e) => setOptionId(Number(e.target.value))}
                     className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                    disabled={typeof baseQuestionId !== "number"}
                   >
                     <option value="" disabled>
                       A Opção é OBRIGATÓRIA
                     </option>
-                    {mockOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
+                    {baseOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label || opt.value}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="w-1/2">
-                  <label className="block text-sm text-gray-700 mb-1">Estado</label>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Estado
+                  </label>
                   <select
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                    disabled={typeof baseQuestionId !== "number"}
                   >
                     <option value="" disabled>
                       O estado é OBRIGATÓRIO
@@ -436,11 +558,14 @@ export default function QuestionActions() {
             ) : (
               <div className="flex gap-4 mb-4">
                 <div className="w-1/2">
-                  <label className="block text-sm text-gray-700 mb-1">Estado</label>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Estado
+                  </label>
                   <select
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                    disabled={typeof baseQuestionId !== "number"}
                   >
                     <option value="" disabled>
                       O estado é OBRIGATÓRIO
@@ -453,13 +578,16 @@ export default function QuestionActions() {
                   </select>
                 </div>
                 <div className="w-1/2">
-                  <label className="block text-sm text-gray-700 mb-1">Valor</label>
+                  <label className="block text-sm text-gray-700 mb-1">
+                    Valor
+                  </label>
                   <input
                     type="number"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     className="w-full border-b-2 border-red-500 px-2 py-1 text-gray-800"
                     placeholder="O Valor é OBRIGATÓRIO"
+                    disabled={typeof baseQuestionId !== "number"}
                   />
                 </div>
               </div>
@@ -469,28 +597,47 @@ export default function QuestionActions() {
               <label className="block text-sm text-gray-700 mb-1">Destino</label>
               <select
                 value={destination}
-                onChange={(e) => setDestination(e.target.value)}
+                onChange={(e) =>
+                  setDestination(e.target.value ? Number(e.target.value) : "")
+                }
                 className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                disabled={typeof baseQuestionId !== "number"}
               >
                 <option value="" disabled>
                   O Destino é OBRIGATÓRIO
                 </option>
-                {mockDestinations.map((dest) => (
-                  <option key={dest} value={dest}>
-                    {dest}
-                  </option>
-                ))}
+                {questions
+                  .filter((q) => q.id !== baseQuestionId) // evita pular para si mesma
+                  .map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {getQuestionLabel(q)}
+                    </option>
+                  ))}
               </select>
             </div>
 
             <div className="flex justify-end gap-2">
               <button
                 className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
-                onClick={() => setShowSkipModal(false)}
+                onClick={() => {
+                  setShowSkipModal(false);
+                  setIsNumber(false);
+                  setOptionId("");
+                  setState("");
+                  setValue("");
+                  setDestination("");
+                  if (typeof currentQuestionId !== "number") {
+                    setBaseOptions([]);
+                    setBaseQuestionId("");
+                  }
+                }}
               >
                 CANCELAR
               </button>
-              <button className="px-4 py-2 rounded bg-orange-500 text-white opacity-60 cursor-not-allowed">
+              <button
+                className="px-4 py-2 rounded bg-orange-500 text-white"
+                onClick={handleSaveSkip}
+              >
                 SALVAR
               </button>
             </div>
@@ -498,29 +645,38 @@ export default function QuestionActions() {
         </div>
       )}
 
-      {/* ================= MODAL: VINCULAR ================= */}
+      {/* ================= MODAL: VINCULAR (UI estática) ================= */}
       {showLinkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-800">Vincular Questões</h2>
+            <h2 className="text-lg font-semibold mb-4 text-gray-800">
+              Vincular Questões
+            </h2>
 
             <p className="text-sm text-gray-700 mb-4">
               Esta questão será exibida <strong>somente se</strong>:
             </p>
 
             <div className="mb-4">
-              <label className="block text-sm text-gray-700 mb-1">Questão condicional</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Questão condicional
+              </label>
               <select className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800">
                 <option value="" disabled>
                   Selecione uma questão
                 </option>
-                <option value="Q1">Q1 - Você tem filhos?</option>
-                <option value="Q2">Q2 - Trabalha atualmente?</option>
+                {questions.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {getQuestionLabel(q)}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div className="mb-4">
-              <label className="block text-sm text-gray-700 mb-1">Condição</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Condição
+              </label>
               <select className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800">
                 <option value="" disabled>
                   Selecione uma condição
@@ -533,7 +689,9 @@ export default function QuestionActions() {
             </div>
 
             <div className="mb-6">
-              <label className="block text-sm text-gray-700 mb-1">Valor esperado</label>
+              <label className="block text-sm text-gray-700 mb-1">
+                Valor esperado
+              </label>
               <input
                 type="text"
                 placeholder="Digite o valor ou rótulo da opção"
@@ -556,11 +714,13 @@ export default function QuestionActions() {
         </div>
       )}
 
-      {/* ================= MODAL: REORDENAR ================= */}
+      {/* ================= MODAL: REORDENAR (UI estática) ================= */}
       {showReorderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-semibold mb-6 text-gray-800">Reordene as Questões</h2>
+            <h2 className="text-lg font-semibold mb-6 text-gray-800">
+              Reordene as Questões
+            </h2>
 
             <div className="grid grid-cols-12 items-center font-semibold border-b pb-2 mb-3 text-sm text-gray-600">
               <div className="col-span-3">Variável</div>
@@ -570,14 +730,21 @@ export default function QuestionActions() {
             </div>
 
             {questions.map((q) => (
-              <div key={q.id} className="grid grid-cols-12 items-center py-2 border-b text-sm">
-                <div className="col-span-3 truncate">{q.variable || "-"}</div>
+              <div
+                key={q.id}
+                className="grid grid-cols-12 items-center py-2 border-b text-sm"
+              >
+                <div className="col-span-3 truncate">
+                  {q.variable || "-"}
+                </div>
                 <div className="col-span-6 truncate">{q.title || "-"}</div>
                 <div className="col-span-2">
                   <input
                     type="number"
                     value={orders[q.id] || ""}
-                    onChange={(e) => setOrders({ ...orders, [q.id]: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setOrders({ ...orders, [q.id]: Number(e.target.value) })
+                    }
                     className="w-full border-b-2 border-orange-500 px-2 py-1 text-gray-800 focus:outline-none focus:border-orange-600"
                   />
                 </div>
@@ -599,7 +766,7 @@ export default function QuestionActions() {
         </div>
       )}
 
-      {/* ================= MODAL: RECUSA ================= */}
+      {/* ================= MODAL: RECUSA (UI estática) ================= */}
       {showRefuseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
@@ -611,43 +778,33 @@ export default function QuestionActions() {
 
             <div className="flex gap-4 mb-4">
               <div className="w-1/2">
-                <label className="block text-sm text-gray-700 mb-1">Opção</label>
-                <select
-                  value={option}
-                  onChange={(e) => setOption(e.target.value)}
-                  className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
-                >
+                <label className="block text-sm text-gray-700 mb-1">
+                  Opção
+                </label>
+                <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
                   <option value="" disabled>
                     A Opção é OBRIGATÓRIA
                   </option>
-                  {mockOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
                 </select>
               </div>
 
               <div className="w-1/2">
-                <label className="block text-sm text-gray-700 mb-1">Estado</label>
-                <select
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
-                >
+                <label className="block text-sm text-gray-700 mb-1">
+                  Estado
+                </label>
+                <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
                   <option value="" disabled>
                     O Estado é OBRIGATÓRIO
                   </option>
-                  {mockStates.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  <option>selecionado</option>
+                  <option>não selecionado</option>
                 </select>
               </div>
             </div>
 
-            <p className="text-sm text-gray-800 mb-6">então <strong>recuse</strong></p>
+            <p className="text-sm text-gray-800 mb-6">
+              então <strong>recuse</strong>
+            </p>
 
             <div className="flex justify-end gap-2">
               <button
@@ -663,7 +820,6 @@ export default function QuestionActions() {
           </div>
         </div>
       )}
-
     </TooltipProvider>
   );
 }
