@@ -25,10 +25,6 @@ import {
 import { createQuestionRule } from "@/utils/actions/question-rule-data";
 import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
 
-/** Props é opcional para manter retrocompatibilidade.
- *  Se você passar currentQuestionId, o modal de Pulo usa essa questão como base.
- *  Se NÃO passar, o modal permite escolher a questão base num dropdown.
- */
 export default function QuestionActions({
   currentQuestionId,
 }: {
@@ -54,7 +50,7 @@ export default function QuestionActions({
   // ====== PULO ======
   const [baseQuestionId, setBaseQuestionId] = useState<number | "">(
     currentQuestionId ?? ""
-  ); // questão base (se não vier por props, usuário escolhe)
+  );
   const [baseOptions, setBaseOptions] = useState<QuestionOptionProps[]>([]);
   const [isNumber, setIsNumber] = useState(false);
   const [optionId, setOptionId] = useState<number | "">("");
@@ -62,7 +58,21 @@ export default function QuestionActions({
   const [value, setValue] = useState("");
   const [destination, setDestination] = useState<number | "">("");
 
-  // Mocks que ainda não vamos integrar (outros modais)
+  // ====== LINK (exibir somente se...) ======
+  const [linkQuestionId, setLinkQuestionId] = useState<number | "">("");
+  const [linkOperator, setLinkOperator] =
+    useState<"" | "eq" | "neq" | "selected" | "not_selected">("");
+  const [linkValue, setLinkValue] = useState("");
+  const [linkIsNumber, setLinkIsNumber] = useState(false);
+  const [linkSourceOptions, setLinkSourceOptions] = useState<
+    QuestionOptionProps[]
+  >([]);
+  // Fallback: se não recebermos currentQuestionId por props, usuário escolhe o alvo
+  const [linkTargetId, setLinkTargetId] = useState<number | "">(
+    currentQuestionId ?? ""
+  );
+
+  // Mocks (somente UI para botões ainda não integrados)
   const mockForms = useMemo(
     () => [
       "Teste Zidane",
@@ -73,61 +83,78 @@ export default function QuestionActions({
     ],
     []
   );
-  const mockStates = useMemo(
-    () => ["selecionado", "não selecionado"],
-    []
-  );
+  const mockStates = useMemo(() => ["selecionado", "não selecionado"], []);
   const mockNumberStates = useMemo(
-    () => ["maior que", "maior ou igual", "menor que", "menor ou igual", "diferente", "igual"],
+    () => [
+      "maior que",
+      "maior ou igual",
+      "menor que",
+      "menor ou igual",
+      "diferente",
+      "igual",
+    ],
     []
   );
 
-  // Quando a prop mudar, sincroniza baseQuestionId
   useEffect(() => {
     if (typeof currentQuestionId === "number") {
       setBaseQuestionId(currentQuestionId);
+      setLinkTargetId(currentQuestionId);
     }
   }, [currentQuestionId]);
 
-  // Carrega lista de questões quando qualquer modal que precise delas abre
+  // Carrega lista de questões quando algum modal que usa perguntas abrir
   useEffect(() => {
     const needsQuestions =
       showReorderModal || showRestrictModal || showSkipModal || showLinkModal;
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
-      if (res) {
-        setQuestions(res);
-        if (showReorderModal) {
-          const initialOrders: Record<number, number> = {};
-          res.forEach((q, i) => (initialOrders[q.id] = i + 1));
-          setOrders(initialOrders);
-        }
+      if (!res) return;
+      setQuestions(res);
+      if (showReorderModal) {
+        const initial: Record<number, number> = {};
+        res.forEach((q, i) => (initial[q.id] = i + 1));
+        setOrders(initial);
       }
     });
-  }, [selectedQuizId, showReorderModal, showRestrictModal, showSkipModal, showLinkModal]);
+  }, [
+    selectedQuizId,
+    showReorderModal,
+    showRestrictModal,
+    showSkipModal,
+    showLinkModal,
+  ]);
 
-  // Quando abrir o modal de pulo e houver questão base, carrega opções reais dessa questão
+  // Opções da questão base (PULO)
   useEffect(() => {
     if (!showSkipModal) return;
-
-    async function loadOptions(qid: number) {
+    const load = async (qid: number) => {
       const res = await getQuestionWithOptions(qid);
       setBaseOptions(res?.options ?? []);
-    }
-
-    if (typeof baseQuestionId === "number") {
-      loadOptions(baseQuestionId);
-    } else {
-      setBaseOptions([]);
-    }
+    };
+    if (typeof baseQuestionId === "number") load(baseQuestionId);
+    else setBaseOptions([]);
   }, [showSkipModal, baseQuestionId]);
 
-  // Helper: label amigável para uma questão
+  // Opções da questão condicional (LINK)
+  useEffect(() => {
+    if (!showLinkModal) return;
+    const load = async () => {
+      if (typeof linkQuestionId === "number") {
+        const res = await getQuestionWithOptions(linkQuestionId);
+        setLinkSourceOptions(res?.options ?? []);
+      } else {
+        setLinkSourceOptions([]);
+      }
+    };
+    load();
+  }, [showLinkModal, linkQuestionId]);
+
   const getQuestionLabel = (q: QuestionProps) =>
     `${q.variable || `Q${q.id}`} — ${q.title || "-"}`;
 
-  // ====== SALVAR REGRA DE PULO ======
+  // ====== SALVAR PULO ======
   async function handleSaveSkip() {
     try {
       if (!selectedQuizId) throw new Error("Quiz não selecionado.");
@@ -135,7 +162,6 @@ export default function QuestionActions({
         throw new Error("Selecione a questão base.");
       if (!destination) throw new Error("Selecione o destino.");
 
-      // monta UMA condição (lógica AND por padrão)
       let operator: string;
       let condition: any;
 
@@ -171,7 +197,6 @@ export default function QuestionActions({
         };
       }
 
-      // payload da regra
       const payload = {
         quiz_id: Number(selectedQuizId),
         source_question_id: Number(baseQuestionId),
@@ -184,7 +209,6 @@ export default function QuestionActions({
       };
 
       await createQuestionRule(payload);
-
       await Swal.fire({
         icon: "success",
         title: "Regra de pulo criada!",
@@ -192,14 +216,12 @@ export default function QuestionActions({
         showConfirmButton: false,
       });
 
-      // limpa e fecha
       setShowSkipModal(false);
       setIsNumber(false);
       setOptionId("");
       setState("");
       setValue("");
       setDestination("");
-      // mantém baseQuestionId (se veio por props), senão deixa o usuário decidir da próxima vez
       if (typeof currentQuestionId !== "number") {
         setBaseOptions([]);
         setBaseQuestionId("");
@@ -209,6 +231,86 @@ export default function QuestionActions({
         icon: "error",
         title: "Erro ao salvar",
         text: err?.message ?? String(err),
+      });
+    }
+  }
+
+  // ====== SALVAR LINK (exibir somente se...) ======
+  async function handleSaveLink() {
+    try {
+      if (!selectedQuizId) throw new Error("Quiz não selecionado.");
+      const targetId =
+        typeof currentQuestionId === "number"
+          ? currentQuestionId
+          : typeof linkTargetId === "number"
+            ? linkTargetId
+            : null;
+      if (!targetId)
+        throw new Error(
+          "Selecione a questão alvo (esta) no topo do modal."
+        );
+      if (typeof linkQuestionId !== "number")
+        throw new Error("Selecione a questão condicional.");
+      if (!linkOperator) throw new Error("Selecione a condição.");
+
+      // Monta a condição
+      let condition: any = {
+        condition_question_id: linkQuestionId,
+        operator: linkOperator,
+        option_id: null as number | null,
+        compare_value: null as string | null,
+        is_number: 0 as 0 | 1,
+      };
+
+      if (linkOperator === "selected" || linkOperator === "not_selected") {
+        if (!linkValue.trim())
+          throw new Error("Informe o rótulo/valor da opção.");
+        const opt = linkSourceOptions.find(
+          (o) =>
+            (o.label ?? "").toLowerCase() === linkValue.trim().toLowerCase() ||
+            (o.value ?? "").toLowerCase() === linkValue.trim().toLowerCase()
+        );
+        if (!opt)
+          throw new Error("Opção não encontrada na questão condicional.");
+        condition.option_id = opt.id!;
+      } else {
+        if (!linkValue.trim()) throw new Error("Informe o valor esperado.");
+        condition.compare_value = linkValue.trim();
+        condition.is_number = linkIsNumber ? 1 : 0;
+      }
+
+      // type "show": exibir a questão alvo somente se a condição for verdadeira
+      const payload = {
+        quiz_id: Number(selectedQuizId),
+        source_question_id: Number(linkQuestionId),
+        type: "show" as const,
+        logic: "AND" as const,
+        target_question_id: Number(targetId),
+        sort_order: 0,
+        is_active: 1,
+        conditions: [condition],
+      };
+
+      await createQuestionRule(payload);
+      await Swal.fire({
+        icon: "success",
+        title: "Regra de exibição criada!",
+        timer: 1400,
+        showConfirmButton: false,
+      });
+
+      setShowLinkModal(false);
+      setLinkQuestionId("");
+      setLinkOperator("");
+      setLinkValue("");
+      setLinkIsNumber(false);
+      setLinkSourceOptions([]);
+      if (typeof currentQuestionId !== "number") setLinkTargetId("");
+    } catch (err: any) {
+      Swal.fire({
+        icon: "error",
+        title: "Erro ao salvar",
+        text: err?.message || String(err),
       });
     }
   }
@@ -348,7 +450,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: RESTRIÇÃO (apenas UI por enquanto) ================= */}
+      {/* ================= MODAL: RESTRIÇÃO (UI) ================= */}
       {showRestrictModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6">
@@ -360,11 +462,7 @@ export default function QuestionActions({
 
             <div className="rounded border p-4">
               <label className="flex items-center gap-2 text-sm text-gray-700 mb-6">
-                <input
-                  type="checkbox"
-                  className="accent-orange-500"
-                  disabled
-                />
+                <input type="checkbox" className="accent-orange-500" disabled />
                 Numérico
               </label>
 
@@ -459,7 +557,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: PULAR (conectado à API) ================= */}
+      {/* ================= MODAL: PULAR (API) ================= */}
       {showSkipModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
@@ -467,7 +565,6 @@ export default function QuestionActions({
               Editar regra de pulo
             </h2>
 
-            {/* Questão base: se não veio por props, deixa escolher */}
             {typeof currentQuestionId !== "number" ? (
               <div className="mb-4">
                 <label className="block text-sm text-gray-700 mb-1">
@@ -607,7 +704,7 @@ export default function QuestionActions({
                   O Destino é OBRIGATÓRIO
                 </option>
                 {questions
-                  .filter((q) => q.id !== baseQuestionId) // evita pular para si mesma
+                  .filter((q) => q.id !== baseQuestionId)
                   .map((q) => (
                     <option key={q.id} value={q.id}>
                       {getQuestionLabel(q)}
@@ -645,7 +742,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: VINCULAR (UI estática) ================= */}
+      {/* ================= MODAL: VINCULAR (API) ================= */}
       {showLinkModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
@@ -657,14 +754,45 @@ export default function QuestionActions({
               Esta questão será exibida <strong>somente se</strong>:
             </p>
 
+            {/* Fallback: escolher a questão alvo quando não vier por props */}
+            {typeof currentQuestionId !== "number" && (
+              <div className="mb-4">
+                <label className="block text-sm text-gray-700 mb-1">
+                  Questão alvo (esta)
+                </label>
+                <select
+                  value={linkTargetId}
+                  onChange={(e) =>
+                    setLinkTargetId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800"
+                >
+                  <option value="">Selecione a questão</option>
+                  {questions.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {getQuestionLabel(q)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div className="mb-4">
               <label className="block text-sm text-gray-700 mb-1">
                 Questão condicional
               </label>
-              <select className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800">
-                <option value="" disabled>
-                  Selecione uma questão
-                </option>
+              <select
+                value={linkQuestionId}
+                onChange={(e) =>
+                  setLinkQuestionId(
+                    e.target.value ? Number(e.target.value) : ""
+                  )
+                }
+                className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800"
+              >
+                <option value="">Selecione uma questão</option>
                 {questions.map((q) => (
                   <option key={q.id} value={q.id}>
                     {getQuestionLabel(q)}
@@ -677,14 +805,16 @@ export default function QuestionActions({
               <label className="block text-sm text-gray-700 mb-1">
                 Condição
               </label>
-              <select className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800">
-                <option value="" disabled>
-                  Selecione uma condição
-                </option>
+              <select
+                value={linkOperator}
+                onChange={(e) => setLinkOperator(e.target.value as any)}
+                className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 bg-transparent text-gray-800"
+              >
+                <option value="">Selecione uma condição</option>
                 <option value="eq">é igual a</option>
                 <option value="neq">é diferente de</option>
-                <option value="sel">está selecionado</option>
-                <option value="nsel">não está selecionado</option>
+                <option value="selected">está selecionado</option>
+                <option value="not_selected">não está selecionado</option>
               </select>
             </div>
 
@@ -694,19 +824,47 @@ export default function QuestionActions({
               </label>
               <input
                 type="text"
-                placeholder="Digite o valor ou rótulo da opção"
+                value={linkValue}
+                onChange={(e) => setLinkValue(e.target.value)}
+                placeholder={
+                  linkOperator === "selected" || linkOperator === "not_selected"
+                    ? "Digite o rótulo/valor da opção"
+                    : "Digite o valor"
+                }
                 className="w-full border-b-2 border-orange-500 focus:outline-none px-2 py-1 text-gray-800"
               />
+              {linkOperator === "eq" || linkOperator === "neq" ? (
+                <label className="mt-2 inline-flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={linkIsNumber}
+                    onChange={() => setLinkIsNumber(!linkIsNumber)}
+                    className="accent-orange-500"
+                  />
+                  valor numérico
+                </label>
+              ) : null}
             </div>
 
             <div className="flex justify-end gap-2">
               <button
                 className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
-                onClick={() => setShowLinkModal(false)}
+                onClick={() => {
+                  setShowLinkModal(false);
+                  setLinkQuestionId("");
+                  setLinkOperator("");
+                  setLinkValue("");
+                  setLinkIsNumber(false);
+                  setLinkSourceOptions([]);
+                  if (typeof currentQuestionId !== "number") setLinkTargetId("");
+                }}
               >
                 CANCELAR
               </button>
-              <button className="px-4 py-2 rounded bg-orange-500 text-white opacity-60 cursor-not-allowed">
+              <button
+                className="px-4 py-2 rounded bg-orange-500 text-white"
+                onClick={handleSaveLink}
+              >
                 SALVAR
               </button>
             </div>
@@ -714,7 +872,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: REORDENAR (UI estática) ================= */}
+      {/* ================= MODAL: REORDENAR (UI) ================= */}
       {showReorderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
@@ -766,7 +924,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: RECUSA (UI estática) ================= */}
+      {/* ================= MODAL: RECUSA (UI) ================= */}
       {showRefuseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
