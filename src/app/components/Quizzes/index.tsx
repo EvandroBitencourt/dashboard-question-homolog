@@ -16,6 +16,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -42,6 +43,7 @@ import {
 import { quizzesProps } from "@/utils/types/quizzes";
 
 import Swal from "sweetalert2";
+import Link from "next/link";
 
 const quizSchema = z.object({
   title: z.string().min(3, "O título é obrigatório"),
@@ -466,9 +468,8 @@ export default function Quizzes() {
                 setSelectedQuizId(quiz.id);
                 setSelectedQuizTitle(quiz.title);
               }}
-              className={`cursor-pointer bg-white p-4 border rounded-md shadow-sm hover:shadow transition flex justify-between items-center ${
-                selectedQuizId === quiz.id ? "border-2 border-[#e74e15]" : ""
-              }`}
+              className={`cursor-pointer bg-white p-4 border rounded-md shadow-sm hover:shadow transition flex justify-between items-center ${selectedQuizId === quiz.id ? "border-2 border-[#e74e15]" : ""
+                }`}
             >
               <div>
                 <h3 className="font-bold text-lg">{quiz.title}</h3>
@@ -490,6 +491,9 @@ export default function Quizzes() {
                   <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>Editar Quiz</DialogTitle>
+                      <DialogDescription>
+                        <Link className="text-blue-500 font-medium" href={'#'} target="_blank">Clique aqui para acessar o LINK DO FORMULÁRIO ONLINE</Link>
+                      </DialogDescription>
                     </DialogHeader>
                     <Form {...editForm}>
                       <form
@@ -617,7 +621,7 @@ export default function Quizzes() {
                                     )}
                                     <option value="active">Ativo</option>
                                     {field.value === "active" ||
-                                    field.value === "disabled" ? (
+                                      field.value === "disabled" ? (
                                       <option value="disabled">
                                         Desabilitado
                                       </option>
