@@ -438,6 +438,14 @@ export default function Question() {
     refreshQuestions();
   }, [refreshQuestions]);
 
+  // >>>>>>> atualiza a lista quando copiar/criar/excluir fora deste componente
+  useEffect(() => {
+    const handler = () => refreshQuestions();
+    window.addEventListener("questions:changed", handler as any);
+    return () => window.removeEventListener("questions:changed", handler as any);
+  }, [refreshQuestions]);
+  // <<<<<<<
+
   useEffect(() => {
     if (!selectedQuestionId) {
       setSelectedQuestionFull(null);
@@ -483,6 +491,8 @@ export default function Question() {
       setOpenDialog(false);
       setQuestionType("");
       setSelectedQuestionId(newQuestion.id);
+
+      window.dispatchEvent(new Event("questions:changed"));
     } catch { /* noop */ }
   }, [selectedQuizId, questionType]);
 
@@ -539,6 +549,7 @@ export default function Question() {
         setSelectedQuestionId(null);
         setSelectedQuestionFull(null);
         Swal.fire("Excluído!", "A questão foi removida com sucesso.", "success");
+        window.dispatchEvent(new Event("questions:changed"));
       } catch {
         Swal.fire("Erro", "Não foi possível excluir a questão.", "error");
       }

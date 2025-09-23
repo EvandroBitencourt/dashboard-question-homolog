@@ -21,10 +21,28 @@ import { useQuiz } from "@/context/QuizContext";
 import {
   listQuestionsByQuiz,
   getQuestionWithOptions,
+  createQuestion,
 } from "@/utils/actions/question-data";
 import { createQuestionRule } from "@/utils/actions/question-rule-data";
+import { createQuestionOption } from "@/utils/actions/question-option-data";
 import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
 
+// NOVO: listar questionários para o modal de cópia
+import { listQuizzes } from "@/utils/actions/quizzes-data";
+
+
+function fallbackUUID(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/** Props é opcional para manter retrocompatibilidade.
+ *  Se você passar currentQuestionId, o modal de Pulo usa essa questão como base.
+ *  Se NÃO passar, o modal permite escolher a questão base num dropdown.
+ */
 export default function QuestionActions({
   currentQuestionId,
 }: {
@@ -41,9 +59,6 @@ export default function QuestionActions({
   const [showRestrictModal, setShowRestrictModal] = useState(false);
 
   // Estado geral
-  const [copies, setCopies] = useState(1);
-  const [selectedForm, setSelectedForm] = useState("");
-
   const [questions, setQuestions] = useState<QuestionProps[]>([]);
   const [orders, setOrders] = useState<Record<number, number>>({});
 
@@ -67,22 +82,19 @@ export default function QuestionActions({
   const [linkSourceOptions, setLinkSourceOptions] = useState<
     QuestionOptionProps[]
   >([]);
-  // Fallback: se não recebermos currentQuestionId por props, usuário escolhe o alvo
   const [linkTargetId, setLinkTargetId] = useState<number | "">(
     currentQuestionId ?? ""
   );
 
+  // ====== CÓPIA ======
+  const [copyCount, setCopyCount] = useState<number>(1);
+  const [quizzes, setQuizzes] = useState<
+    { id: number; title?: string; name?: string }[]
+  >([]);
+  const [targetQuizId, setTargetQuizId] = useState<number | "">("");
+  const [copyLoading, setCopyLoading] = useState(false);
+
   // Mocks (somente UI para botões ainda não integrados)
-  const mockForms = useMemo(
-    () => [
-      "Teste Zidane",
-      "Cota 3 - Lucas - Jun/2025",
-      "Cota 4 - Lucas - Jun/2025",
-      "Novo Questionário",
-      "teste evandro",
-    ],
-    []
-  );
   const mockStates = useMemo(() => ["selecionado", "não selecionado"], []);
   const mockNumberStates = useMemo(
     () => [
@@ -151,8 +163,28 @@ export default function QuestionActions({
     load();
   }, [showLinkModal, linkQuestionId]);
 
+  // Lista de questionários (para CÓPIA)
+  useEffect(() => {
+    if (!showCopyModal) return;
+    (async () => {
+      try {
+        const qs = (await listQuizzes()) || [];
+        setQuizzes(qs);
+        // sugestão: pré-selecionar o atual se existir
+        setTargetQuizId((prev) =>
+          prev !== "" ? prev : (selectedQuizId as number) ?? ""
+        );
+      } catch {
+        setQuizzes([]);
+      }
+    })();
+  }, [showCopyModal, selectedQuizId]);
+
   const getQuestionLabel = (q: QuestionProps) =>
     `${q.variable || `Q${q.id}`} — ${q.title || "-"}`;
+
+  const getQuizLabel = (q: { title?: string; name?: string }) =>
+    q.title || q.name || "Sem título";
 
   // ====== SALVAR PULO ======
   async function handleSaveSkip() {
@@ -246,9 +278,7 @@ export default function QuestionActions({
             ? linkTargetId
             : null;
       if (!targetId)
-        throw new Error(
-          "Selecione a questão alvo (esta) no topo do modal."
-        );
+        throw new Error("Selecione a questão alvo (esta) no topo do modal.");
       if (typeof linkQuestionId !== "number")
         throw new Error("Selecione a questão condicional.");
       if (!linkOperator) throw new Error("Selecione a condição.");
@@ -315,6 +345,94 @@ export default function QuestionActions({
     }
   }
 
+  // ====== COPIAR QUESTÃO PARA OUTRO QUESTIONÁRIO ======
+  async function handleCopyQuestion() {
+    try {
+      if (copyLoading) return;
+      if (typeof currentQuestionId !== "number") {
+        throw new Error("Abra o modal a partir de uma questão.");
+      }
+      if (!targetQuizId) {
+        throw new Error("Selecione o questionário de destino.");
+      }
+      if (!copyCount || copyCount < 1) {
+        throw new Error("Informe um número de cópias válido.");
+      }
+
+      setCopyLoading(true);
+
+      // pega a questão completa (inclui opções)
+      const full = await getQuestionWithOptions(currentQuestionId);
+      if (!full?.question) throw new Error("Questão de origem não encontrada.");
+
+      const q = full.question;
+
+      // cria as cópias
+      for (let i = 0; i < copyCount; i++) {
+        const uuid =
+          (self as any).crypto?.randomUUID?.() || fallbackUUID();
+
+        const newQuestion = await createQuestion({
+          quiz_id: Number(targetQuizId),
+          type: q.type,
+          title:
+            q.title
+              ? `Cópia de ${q.title}`
+              : q.variable
+                ? `Cópia de ${q.variable}`
+                : "Cópia",
+          variable: q.variable ? `${q.variable}_copia_${i + 1}` : "",
+          uuid,
+          // copiar flags principais
+          is_required: !!q.is_required,
+          is_hidden: !!q.is_hidden,
+          is_readonly: !!q.is_readonly,
+          shuffle_options: !!q.shuffle_options,
+        });
+
+        // replica opções (quando houver)
+        if (Array.isArray(full.options) && full.options.length > 0) {
+          for (const opt of full.options) {
+            await createQuestionOption({
+              question_id: newQuestion.id,
+              label: opt.label ?? "",
+              value: opt.value ?? "",
+              is_open: !!opt.is_open,
+              is_exclusive: !!opt.is_exclusive,
+              is_nsnr: !!opt.is_nsnr,
+              sort_order: Number(opt.sort_order ?? 0),
+            });
+          }
+        }
+      }
+
+      setCopyLoading(false);
+      setShowCopyModal(false);
+
+      await Swal.fire({
+        icon: "success",
+        title: "Questão copiada!",
+        text:
+          Number(targetQuizId) === Number(selectedQuizId)
+            ? "As cópias foram adicionadas neste questionário."
+            : "As cópias foram adicionadas no questionário de destino.",
+        timer: 1600,
+        showConfirmButton: false,
+      });
+
+      // limpar estados
+      setCopyCount(1);
+      setTargetQuizId("");
+    } catch (err: any) {
+      setCopyLoading(false);
+      Swal.fire({
+        icon: "error",
+        title: "Erro ao copiar",
+        text: err?.message ?? String(err),
+      });
+    }
+  }
+
   return (
     <TooltipProvider>
       <div className="flex gap-4 mb-4">
@@ -328,7 +446,7 @@ export default function QuestionActions({
               <Copy size={20} />
             </button>
           </TooltipTrigger>
-          <TooltipContent>Copia questão</TooltipContent>
+          <TooltipContent>Copiar questão</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -397,13 +515,19 @@ export default function QuestionActions({
         </Tooltip>
       </div>
 
-      {/* ================= MODAL: COPIAR ================= */}
+      {/* ================= MODAL: COPIAR (API) ================= */}
       {showCopyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
+          <div className="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
+            {copyLoading && (
+              <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-lg">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-transparent" />
+              </div>
+            )}
             <h2 className="text-lg font-semibold mb-4 text-gray-800">
               Copiar Questão
             </h2>
+
             <div className="mb-4">
               <label className="block text-sm text-gray-700 mb-1">
                 Número de cópias
@@ -411,38 +535,48 @@ export default function QuestionActions({
               <input
                 type="number"
                 min={1}
-                value={copies}
-                onChange={(e) => setCopies(Number(e.target.value))}
+                value={copyCount}
+                onChange={(e) => setCopyCount(Math.max(1, Number(e.target.value)))}
                 className="w-full border-b-2 border-orange-500 focus:outline-none focus:border-orange-600 px-2 py-1 text-gray-800"
               />
             </div>
+
             <div className="mb-6">
               <label className="block text-sm text-gray-700 mb-1">
                 Formulário
               </label>
               <select
-                value={selectedForm}
-                onChange={(e) => setSelectedForm(e.target.value)}
+                value={targetQuizId}
+                onChange={(e) =>
+                  setTargetQuizId(e.target.value ? Number(e.target.value) : "")
+                }
                 className="w-full border-b-2 border-orange-500 focus:outline-none focus:border-orange-600 px-2 py-1 bg-transparent text-gray-800"
               >
-                <option value="" disabled>
-                  Selecione um formulário
-                </option>
-                {mockForms.map((form) => (
-                  <option key={form} value={form}>
-                    {form}
+                <option value="">Selecione um formulário</option>
+                {quizzes.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {getQuizLabel(q)}
                   </option>
                 ))}
               </select>
             </div>
+
             <div className="flex justify-end gap-2">
               <button
-                className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
-                onClick={() => setShowCopyModal(false)}
+                disabled={copyLoading}
+                className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition disabled:opacity-60"
+                onClick={() => {
+                  if (copyLoading) return;
+                  setShowCopyModal(false);
+                }}
               >
                 CANCELAR
               </button>
-              <button className="px-4 py-2 rounded bg-orange-500 text-white opacity-60 cursor-not-allowed">
+              <button
+                disabled={copyLoading || !targetQuizId || !copyCount}
+                className="px-4 py-2 rounded bg-orange-500 text-white disabled:opacity-60"
+                onClick={handleCopyQuestion}
+              >
                 COPIAR
               </button>
             </div>
@@ -754,7 +888,6 @@ export default function QuestionActions({
               Esta questão será exibida <strong>somente se</strong>:
             </p>
 
-            {/* Fallback: escolher a questão alvo quando não vier por props */}
             {typeof currentQuestionId !== "number" && (
               <div className="mb-4">
                 <label className="block text-sm text-gray-700 mb-1">
