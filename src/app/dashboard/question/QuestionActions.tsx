@@ -30,7 +30,6 @@ import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
 // NOVO: listar questionários para o modal de cópia
 import { listQuizzes } from "@/utils/actions/quizzes-data";
 
-
 function fallbackUUID(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -606,7 +605,7 @@ export default function QuestionActions({
                     Questão
                   </label>
                   <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
-                    <option value="" disabled selected>
+                    <option value="" disabled>
                       A Questão é OBRIGATÓRIA
                     </option>
                     {questions.map((q) => (
