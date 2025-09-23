@@ -348,8 +348,17 @@ export default function QuestionActions({
   async function handleCopyQuestion() {
     try {
       if (copyLoading) return;
-      if (typeof currentQuestionId !== "number") {
-        throw new Error("Abra o modal a partir de uma questão.");
+
+      // Usa o id vindo por props; se não vier, tenta o baseQuestionId
+      const sourceId =
+        typeof currentQuestionId === "number"
+          ? currentQuestionId
+          : typeof baseQuestionId === "number"
+            ? baseQuestionId
+            : null;
+
+      if (!sourceId) {
+        throw new Error("Selecione uma questão para copiar.");
       }
       if (!targetQuizId) {
         throw new Error("Selecione o questionário de destino.");
@@ -361,7 +370,7 @@ export default function QuestionActions({
       setCopyLoading(true);
 
       // pega a questão completa (inclui opções)
-      const full = await getQuestionWithOptions(currentQuestionId);
+      const full = await getQuestionWithOptions(sourceId);
       if (!full?.question) throw new Error("Questão de origem não encontrada.");
 
       const q = full.question;
@@ -374,12 +383,11 @@ export default function QuestionActions({
         const newQuestion = await createQuestion({
           quiz_id: Number(targetQuizId),
           type: q.type,
-          title:
-            q.title
-              ? `Cópia de ${q.title}`
-              : q.variable
-                ? `Cópia de ${q.variable}`
-                : "Cópia",
+          title: q.title
+            ? `Cópia de ${q.title}`
+            : q.variable
+              ? `Cópia de ${q.variable}`
+              : "Cópia",
           variable: q.variable ? `${q.variable}_copia_${i + 1}` : "",
           uuid,
           // copiar flags principais
@@ -535,7 +543,9 @@ export default function QuestionActions({
                 type="number"
                 min={1}
                 value={copyCount}
-                onChange={(e) => setCopyCount(Math.max(1, Number(e.target.value)))}
+                onChange={(e) =>
+                  setCopyCount(Math.max(1, Number(e.target.value)))
+                }
                 className="w-full border-b-2 border-orange-500 focus:outline-none focus:border-orange-600 px-2 py-1 text-gray-800"
               />
             </div>
@@ -605,7 +615,7 @@ export default function QuestionActions({
                     Questão
                   </label>
                   <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
-                    <option value="" disabled>
+                    <option value="" disabled selected>
                       A Questão é OBRIGATÓRIA
                     </option>
                     {questions.map((q) => (
