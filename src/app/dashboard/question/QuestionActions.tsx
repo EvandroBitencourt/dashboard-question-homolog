@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Copy,
   SkipForward,
@@ -26,10 +26,9 @@ import {
 import { createQuestionRule } from "@/utils/actions/question-rule-data";
 import { createQuestionOption } from "@/utils/actions/question-option-data";
 import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
-
-// NOVO: listar questionários para o modal de cópia
 import { listQuizzes } from "@/utils/actions/quizzes-data";
 
+/* utils */
 function fallbackUUID(): string {
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -38,10 +37,6 @@ function fallbackUUID(): string {
   });
 }
 
-/** Props é opcional para manter retrocompatibilidade.
- *  Se você passar currentQuestionId, o modal de Pulo usa essa questão como base.
- *  Se NÃO passar, o modal permite escolher a questão base num dropdown.
- */
 export default function QuestionActions({
   currentQuestionId,
 }: {
@@ -49,7 +44,7 @@ export default function QuestionActions({
 }) {
   const { selectedQuizId } = useQuiz();
 
-  // Modais
+  /* ------------------- MODAIS ------------------- */
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [showSkipModal, setShowSkipModal] = useState(false);
@@ -57,11 +52,11 @@ export default function QuestionActions({
   const [showRefuseModal, setShowRefuseModal] = useState(false);
   const [showRestrictModal, setShowRestrictModal] = useState(false);
 
-  // Estado geral
+  /* ------------------- ESTADOS GERAIS ------------------- */
   const [questions, setQuestions] = useState<QuestionProps[]>([]);
   const [orders, setOrders] = useState<Record<number, number>>({});
 
-  // ====== PULO ======
+  /* ------------------- PULO ------------------- */
   const [baseQuestionId, setBaseQuestionId] = useState<number | "">(
     currentQuestionId ?? ""
   );
@@ -72,7 +67,7 @@ export default function QuestionActions({
   const [value, setValue] = useState("");
   const [destination, setDestination] = useState<number | "">("");
 
-  // ====== LINK (exibir somente se...) ======
+  /* ------------------- LINK ------------------- */
   const [linkQuestionId, setLinkQuestionId] = useState<number | "">("");
   const [linkOperator, setLinkOperator] =
     useState<"" | "eq" | "neq" | "selected" | "not_selected">("");
@@ -85,7 +80,9 @@ export default function QuestionActions({
     currentQuestionId ?? ""
   );
 
-  // ====== CÓPIA ======
+  /* ------------------- CÓPIA ------------------- */
+  // SEM pré-seleção: força o usuário a escolher origem e formulário
+  const [sourceQuestionId, setSourceQuestionId] = useState<number | "">("");
   const [copyCount, setCopyCount] = useState<number>(1);
   const [quizzes, setQuizzes] = useState<
     { id: number; title?: string; name?: string }[]
@@ -93,20 +90,7 @@ export default function QuestionActions({
   const [targetQuizId, setTargetQuizId] = useState<number | "">("");
   const [copyLoading, setCopyLoading] = useState(false);
 
-  // Mocks (somente UI para botões ainda não integrados)
-  const mockStates = useMemo(() => ["selecionado", "não selecionado"], []);
-  const mockNumberStates = useMemo(
-    () => [
-      "maior que",
-      "maior ou igual",
-      "menor que",
-      "menor ou igual",
-      "diferente",
-      "igual",
-    ],
-    []
-  );
-
+  /* ------------------- EFFECTS ------------------- */
   useEffect(() => {
     if (typeof currentQuestionId === "number") {
       setBaseQuestionId(currentQuestionId);
@@ -114,10 +98,14 @@ export default function QuestionActions({
     }
   }, [currentQuestionId]);
 
-  // Carrega lista de questões quando algum modal que usa perguntas abrir
+  // carrega perguntas quando algum modal que usa perguntas abre
   useEffect(() => {
     const needsQuestions =
-      showReorderModal || showRestrictModal || showSkipModal || showLinkModal;
+      showReorderModal ||
+      showRestrictModal ||
+      showSkipModal ||
+      showLinkModal ||
+      showCopyModal;
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
@@ -135,9 +123,10 @@ export default function QuestionActions({
     showRestrictModal,
     showSkipModal,
     showLinkModal,
+    showCopyModal,
   ]);
 
-  // Opções da questão base (PULO)
+  // opções da questão base (pulo)
   useEffect(() => {
     if (!showSkipModal) return;
     const load = async (qid: number) => {
@@ -148,44 +137,39 @@ export default function QuestionActions({
     else setBaseOptions([]);
   }, [showSkipModal, baseQuestionId]);
 
-  // Opções da questão condicional (LINK)
+  // opções da questão condicional (link)
   useEffect(() => {
     if (!showLinkModal) return;
-    const load = async () => {
+    (async () => {
       if (typeof linkQuestionId === "number") {
         const res = await getQuestionWithOptions(linkQuestionId);
         setLinkSourceOptions(res?.options ?? []);
       } else {
         setLinkSourceOptions([]);
       }
-    };
-    load();
+    })();
   }, [showLinkModal, linkQuestionId]);
 
-  // Lista de questionários (para CÓPIA)
+  // lista de questionários (cópia)
   useEffect(() => {
     if (!showCopyModal) return;
     (async () => {
       try {
         const qs = (await listQuizzes()) || [];
         setQuizzes(qs);
-        // sugestão: pré-selecionar o atual se existir
-        setTargetQuizId((prev) =>
-          prev !== "" ? prev : (selectedQuizId as number) ?? ""
-        );
       } catch {
         setQuizzes([]);
       }
     })();
-  }, [showCopyModal, selectedQuizId]);
+  }, [showCopyModal]);
 
+  /* ------------------- HELPERS ------------------- */
   const getQuestionLabel = (q: QuestionProps) =>
     `${q.variable || `Q${q.id}`} — ${q.title || "-"}`;
-
   const getQuizLabel = (q: { title?: string; name?: string }) =>
     q.title || q.name || "Sem título";
 
-  // ====== SALVAR PULO ======
+  /* ------------------- SALVAR PULO ------------------- */
   async function handleSaveSkip() {
     try {
       if (!selectedQuizId) throw new Error("Quiz não selecionado.");
@@ -266,7 +250,7 @@ export default function QuestionActions({
     }
   }
 
-  // ====== SALVAR LINK (exibir somente se...) ======
+  /* ------------------- SALVAR LINK ------------------- */
   async function handleSaveLink() {
     try {
       if (!selectedQuizId) throw new Error("Quiz não selecionado.");
@@ -282,7 +266,6 @@ export default function QuestionActions({
         throw new Error("Selecione a questão condicional.");
       if (!linkOperator) throw new Error("Selecione a condição.");
 
-      // Monta a condição
       let condition: any = {
         condition_question_id: linkQuestionId,
         operator: linkOperator,
@@ -308,7 +291,6 @@ export default function QuestionActions({
         condition.is_number = linkIsNumber ? 1 : 0;
       }
 
-      // type "show": exibir a questão alvo somente se a condição for verdadeira
       const payload = {
         quiz_id: Number(selectedQuizId),
         source_question_id: Number(linkQuestionId),
@@ -344,41 +326,24 @@ export default function QuestionActions({
     }
   }
 
-  // ====== COPIAR QUESTÃO PARA OUTRO QUESTIONÁRIO ======
+  /* ------------------- COPIAR QUESTÃO ------------------- */
   async function handleCopyQuestion() {
     try {
       if (copyLoading) return;
-
-      // Usa o id vindo por props; se não vier, tenta o baseQuestionId
-      const sourceId =
-        typeof currentQuestionId === "number"
-          ? currentQuestionId
-          : typeof baseQuestionId === "number"
-            ? baseQuestionId
-            : null;
-
-      if (!sourceId) {
+      if (typeof sourceQuestionId !== "number")
         throw new Error("Selecione uma questão para copiar.");
-      }
-      if (!targetQuizId) {
-        throw new Error("Selecione o questionário de destino.");
-      }
-      if (!copyCount || copyCount < 1) {
+      if (!targetQuizId) throw new Error("Selecione o questionário de destino.");
+      if (!copyCount || copyCount < 1)
         throw new Error("Informe um número de cópias válido.");
-      }
 
       setCopyLoading(true);
 
-      // pega a questão completa (inclui opções)
-      const full = await getQuestionWithOptions(sourceId);
+      const full = await getQuestionWithOptions(sourceQuestionId);
       if (!full?.question) throw new Error("Questão de origem não encontrada.");
-
       const q = full.question;
 
-      // cria as cópias
       for (let i = 0; i < copyCount; i++) {
-        const uuid =
-          (self as any).crypto?.randomUUID?.() || fallbackUUID();
+        const uuid = (self as any).crypto?.randomUUID?.() || fallbackUUID();
 
         const newQuestion = await createQuestion({
           quiz_id: Number(targetQuizId),
@@ -390,14 +355,12 @@ export default function QuestionActions({
               : "Cópia",
           variable: q.variable ? `${q.variable}_copia_${i + 1}` : "",
           uuid,
-          // copiar flags principais
           is_required: !!q.is_required,
           is_hidden: !!q.is_hidden,
           is_readonly: !!q.is_readonly,
           shuffle_options: !!q.shuffle_options,
         });
 
-        // replica opções (quando houver)
         if (Array.isArray(full.options) && full.options.length > 0) {
           for (const opt of full.options) {
             await createQuestionOption({
@@ -427,8 +390,14 @@ export default function QuestionActions({
         showConfirmButton: false,
       });
 
-      // limpar estados
+      // atualiza a lista se copiou no mesmo formulário
+      if (Number(targetQuizId) === Number(selectedQuizId)) {
+        window.dispatchEvent(new Event("questions:changed"));
+      }
+
+      // limpa estados do modal
       setCopyCount(1);
+      setSourceQuestionId("");
       setTargetQuizId("");
     } catch (err: any) {
       setCopyLoading(false);
@@ -440,6 +409,7 @@ export default function QuestionActions({
     }
   }
 
+  /* ------------------- RENDER ------------------- */
   return (
     <TooltipProvider>
       <div className="flex gap-4 mb-4">
@@ -448,7 +418,13 @@ export default function QuestionActions({
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
-              onClick={() => setShowCopyModal(true)}
+              onClick={() => {
+                // abre o modal com tudo em branco para obrigar a escolha
+                setSourceQuestionId("");
+                setTargetQuizId("");
+                setCopyCount(1);
+                setShowCopyModal(true);
+              }}
             >
               <Copy size={20} />
             </button>
@@ -535,6 +511,29 @@ export default function QuestionActions({
               Copiar Questão
             </h2>
 
+            {/* origem — sempre visível, vazio por padrão */}
+            <div className="mb-4">
+              <label className="block text-sm text-gray-700 mb-1">
+                Questão (origem)
+              </label>
+              <select
+                value={sourceQuestionId}
+                onChange={(e) =>
+                  setSourceQuestionId(
+                    e.target.value ? Number(e.target.value) : ""
+                  )
+                }
+                className="w-full border-b-2 border-orange-500 focus:outline-none focus:border-orange-600 px-2 py-1 bg-transparent text-gray-800"
+              >
+                <option value="">Selecione</option>
+                {questions.map((q) => (
+                  <option key={q.id} value={q.id}>
+                    {getQuestionLabel(q)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="mb-4">
               <label className="block text-sm text-gray-700 mb-1">
                 Número de cópias
@@ -582,7 +581,12 @@ export default function QuestionActions({
                 CANCELAR
               </button>
               <button
-                disabled={copyLoading || !targetQuizId || !copyCount}
+                disabled={
+                  copyLoading ||
+                  !targetQuizId ||
+                  !copyCount ||
+                  typeof sourceQuestionId !== "number"
+                }
                 className="px-4 py-2 rounded bg-orange-500 text-white disabled:opacity-60"
                 onClick={handleCopyQuestion}
               >
@@ -615,7 +619,7 @@ export default function QuestionActions({
                     Questão
                   </label>
                   <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
-                    <option value="" disabled selected>
+                    <option value="" disabled>
                       A Questão é OBRIGATÓRIA
                     </option>
                     {questions.map((q) => (
@@ -768,7 +772,7 @@ export default function QuestionActions({
                       A Opção é OBRIGATÓRIA
                     </option>
                     {baseOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
+                      <option key={opt.id} value={opt.id!}>
                         {opt.label || opt.value}
                       </option>
                     ))}
@@ -787,7 +791,7 @@ export default function QuestionActions({
                     <option value="" disabled>
                       O estado é OBRIGATÓRIO
                     </option>
-                    {mockStates.map((s) => (
+                    {["selecionado", "não selecionado"].map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>
@@ -807,10 +811,14 @@ export default function QuestionActions({
                     className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
                     disabled={typeof baseQuestionId !== "number"}
                   >
-                    <option value="" disabled>
-                      O estado é OBRIGATÓRIO
-                    </option>
-                    {mockNumberStates.map((s) => (
+                    {[
+                      "maior que",
+                      "maior ou igual",
+                      "menor que",
+                      "menor ou igual",
+                      "diferente",
+                      "igual",
+                    ].map((s) => (
                       <option key={s} value={s}>
                         {s}
                       </option>
