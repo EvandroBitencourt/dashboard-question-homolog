@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Copy,
   SkipForward,
@@ -22,10 +22,13 @@ import {
   listQuestionsByQuiz,
   getQuestionWithOptions,
   createQuestion,
+  updateQuestion,
 } from "@/utils/actions/question-data";
 import { createQuestionRule } from "@/utils/actions/question-rule-data";
 import { createQuestionOption } from "@/utils/actions/question-option-data";
 import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
+
+// NOVO: listar questionários para o modal de cópia
 import { listQuizzes } from "@/utils/actions/quizzes-data";
 
 /* utils */
@@ -55,6 +58,7 @@ export default function QuestionActions({
   /* ------------------- ESTADOS GERAIS ------------------- */
   const [questions, setQuestions] = useState<QuestionProps[]>([]);
   const [orders, setOrders] = useState<Record<number, number>>({});
+  const [savingOrder, setSavingOrder] = useState(false);
 
   /* ------------------- PULO ------------------- */
   const [baseQuestionId, setBaseQuestionId] = useState<number | "">(
@@ -67,7 +71,7 @@ export default function QuestionActions({
   const [value, setValue] = useState("");
   const [destination, setDestination] = useState<number | "">("");
 
-  /* ------------------- LINK ------------------- */
+  /* ------------------- LINK (mostrar somente se...) ------------------- */
   const [linkQuestionId, setLinkQuestionId] = useState<number | "">("");
   const [linkOperator, setLinkOperator] =
     useState<"" | "eq" | "neq" | "selected" | "not_selected">("");
@@ -81,7 +85,7 @@ export default function QuestionActions({
   );
 
   /* ------------------- CÓPIA ------------------- */
-  // SEM pré-seleção: força o usuário a escolher origem e formulário
+  // origem escolhida no modal (agora começa em branco)
   const [sourceQuestionId, setSourceQuestionId] = useState<number | "">("");
   const [copyCount, setCopyCount] = useState<number>(1);
   const [quizzes, setQuizzes] = useState<
@@ -98,20 +102,18 @@ export default function QuestionActions({
     }
   }, [currentQuestionId]);
 
-  // carrega perguntas quando algum modal que usa perguntas abre
+  // carrega perguntas quando algum modal que usa perguntas abrir
   useEffect(() => {
     const needsQuestions =
-      showReorderModal ||
-      showRestrictModal ||
-      showSkipModal ||
-      showLinkModal ||
-      showCopyModal;
+      showReorderModal || showRestrictModal || showSkipModal || showLinkModal || showCopyModal;
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
       if (!res) return;
       setQuestions(res);
+
       if (showReorderModal) {
+        // inicia com 1..N
         const initial: Record<number, number> = {};
         res.forEach((q, i) => (initial[q.id] = i + 1));
         setOrders(initial);
@@ -140,17 +142,18 @@ export default function QuestionActions({
   // opções da questão condicional (link)
   useEffect(() => {
     if (!showLinkModal) return;
-    (async () => {
+    const load = async () => {
       if (typeof linkQuestionId === "number") {
         const res = await getQuestionWithOptions(linkQuestionId);
         setLinkSourceOptions(res?.options ?? []);
       } else {
         setLinkSourceOptions([]);
       }
-    })();
+    };
+    load();
   }, [showLinkModal, linkQuestionId]);
 
-  // lista de questionários (cópia)
+  // lista de questionários (cópia) – NÃO pré-seleciona nada
   useEffect(() => {
     if (!showCopyModal) return;
     (async () => {
@@ -326,10 +329,71 @@ export default function QuestionActions({
     }
   }
 
+  /* ------------------- REORDENAR ------------------- */
+
+  // tenta atualizar com sort_order; se falhar, tenta com order
+  async function updateOneOrder(questionId: number, newOrder: number) {
+    try {
+      await updateQuestion(questionId, { sort_order: newOrder } as any);
+      return;
+    } catch (e: any) {
+      // tenta com "order"
+      await updateQuestion(questionId, { order: newOrder } as any);
+    }
+  }
+
+  async function handleSaveReorder() {
+    try {
+      if (savingOrder) return;
+      if (!selectedQuizId) throw new Error("Quiz não selecionado.");
+
+      // monta somente o que tem número válido
+      const changes = questions
+        .map((q) => ({
+          id: q.id,
+          newOrder: Number(orders[q.id]),
+        }))
+        .filter((c) => Number.isFinite(c.newOrder) && c.newOrder > 0);
+
+      if (changes.length === 0) {
+        throw new Error("Informe a nova ordem das questões.");
+      }
+
+      setSavingOrder(true);
+
+      // salva em série para evitar conflitos
+      for (const c of changes) {
+        await updateOneOrder(c.id, c.newOrder);
+      }
+
+      setSavingOrder(false);
+      setShowReorderModal(false);
+
+      window.dispatchEvent(new Event("questions:changed"));
+
+      await Swal.fire({
+        icon: "success",
+        title: "Ordem atualizada!",
+        timer: 1200,
+        showConfirmButton: false,
+      });
+    } catch (err: any) {
+      setSavingOrder(false);
+      Swal.fire({
+        icon: "error",
+        title: "Falha ao salvar a ordem",
+        text:
+          err?.message ??
+          "Tente novamente. Se persistir, posso logar o payload para depurar.",
+      });
+    }
+  }
+
   /* ------------------- COPIAR QUESTÃO ------------------- */
   async function handleCopyQuestion() {
     try {
       if (copyLoading) return;
+
       if (typeof sourceQuestionId !== "number")
         throw new Error("Selecione uma questão para copiar.");
       if (!targetQuizId) throw new Error("Selecione o questionário de destino.");
@@ -340,10 +404,12 @@ export default function QuestionActions({
 
       const full = await getQuestionWithOptions(sourceQuestionId);
       if (!full?.question) throw new Error("Questão de origem não encontrada.");
+
       const q = full.question;
 
       for (let i = 0; i < copyCount; i++) {
-        const uuid = (self as any).crypto?.randomUUID?.() || fallbackUUID();
+        const uuid =
+          (self as any).crypto?.randomUUID?.() || fallbackUUID();
 
         const newQuestion = await createQuestion({
           quiz_id: Number(targetQuizId),
@@ -390,12 +456,7 @@ export default function QuestionActions({
         showConfirmButton: false,
       });
 
-      // atualiza a lista se copiou no mesmo formulário
-      if (Number(targetQuizId) === Number(selectedQuizId)) {
-        window.dispatchEvent(new Event("questions:changed"));
-      }
-
-      // limpa estados do modal
+      // limpa somente os campos do modal de cópia
       setCopyCount(1);
       setSourceQuestionId("");
       setTargetQuizId("");
@@ -419,10 +480,9 @@ export default function QuestionActions({
               type="button"
               className="hover:text-orange-500 transition-colors"
               onClick={() => {
-                // abre o modal com tudo em branco para obrigar a escolha
+                // abre modal de cópia com selects EM BRANCO
                 setSourceQuestionId("");
                 setTargetQuizId("");
-                setCopyCount(1);
                 setShowCopyModal(true);
               }}
             >
@@ -511,7 +571,7 @@ export default function QuestionActions({
               Copiar Questão
             </h2>
 
-            {/* origem — sempre visível, vazio por padrão */}
+            {/** origem – começa "Selecione" */}
             <div className="mb-4">
               <label className="block text-sm text-gray-700 mb-1">
                 Questão (origem)
@@ -772,7 +832,7 @@ export default function QuestionActions({
                       A Opção é OBRIGATÓRIA
                     </option>
                     {baseOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id!}>
+                      <option key={opt.id} value={opt.id}>
                         {opt.label || opt.value}
                       </option>
                     ))}
@@ -1022,10 +1082,16 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: REORDENAR (UI) ================= */}
+      {/* ================= MODAL: REORDENAR (API) ================= */}
       {showReorderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto relative">
+            {savingOrder && (
+              <div className="absolute inset-0 bg-white/60 flex items-center justify-center rounded-lg">
+                <div className="animate-spin rounded-full h-10 w-10 border-2 border-gray-300 border-t-transparent" />
+              </div>
+            )}
+
             <h2 className="text-lg font-semibold mb-6 text-gray-800">
               Reordene as Questões
             </h2>
@@ -1049,7 +1115,8 @@ export default function QuestionActions({
                 <div className="col-span-2">
                   <input
                     type="number"
-                    value={orders[q.id] || ""}
+                    min={1}
+                    value={orders[q.id] ?? ""}
                     onChange={(e) =>
                       setOrders({ ...orders, [q.id]: Number(e.target.value) })
                     }
@@ -1063,10 +1130,15 @@ export default function QuestionActions({
               <button
                 className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
                 onClick={() => setShowReorderModal(false)}
+                disabled={savingOrder}
               >
                 CANCELAR
               </button>
-              <button className="px-4 py-2 rounded bg-orange-500 text-white opacity-60 cursor-not-allowed">
+              <button
+                className="px-4 py-2 rounded bg-orange-500 text-white"
+                onClick={handleSaveReorder}
+                disabled={savingOrder}
+              >
                 SALVAR
               </button>
             </div>
