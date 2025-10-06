@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Copy,
   SkipForward,
@@ -85,7 +85,7 @@ export default function QuestionActions({
   );
 
   /* ------------------- CÓPIA ------------------- */
-  // origem escolhida no modal (agora começa em branco)
+  // origem escolhida no modal (começa em branco)
   const [sourceQuestionId, setSourceQuestionId] = useState<number | "">("");
   const [copyCount, setCopyCount] = useState<number>(1);
   const [quizzes, setQuizzes] = useState<
@@ -94,18 +94,36 @@ export default function QuestionActions({
   const [targetQuizId, setTargetQuizId] = useState<number | "">("");
   const [copyLoading, setCopyLoading] = useState(false);
 
+  /* ------------------- RECUSA (API) ------------------- */
+  const [refuseQuestionId, setRefuseQuestionId] = useState<number | "">(
+    currentQuestionId ?? ""
+  );
+  const [refuseOptions, setRefuseOptions] = useState<QuestionOptionProps[]>([]);
+  const [refuseOptionId, setRefuseOptionId] = useState<number | "">("");
+  const [refuseState, setRefuseState] = useState<
+    "" | "selecionado" | "não selecionado"
+  >("");
+  const [refuseSaving, setRefuseSaving] = useState(false);
+
   /* ------------------- EFFECTS ------------------- */
   useEffect(() => {
     if (typeof currentQuestionId === "number") {
       setBaseQuestionId(currentQuestionId);
       setLinkTargetId(currentQuestionId);
+      setRefuseQuestionId(currentQuestionId); // mantém recusa no contexto da questão atual
     }
   }, [currentQuestionId]);
 
   // carrega perguntas quando algum modal que usa perguntas abrir
   useEffect(() => {
     const needsQuestions =
-      showReorderModal || showRestrictModal || showSkipModal || showLinkModal || showCopyModal;
+      showReorderModal ||
+      showRestrictModal ||
+      showSkipModal ||
+      showLinkModal ||
+      showCopyModal ||
+      showRefuseModal; // incluir recusa não afeta reordenar
+
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
@@ -126,6 +144,7 @@ export default function QuestionActions({
     showSkipModal,
     showLinkModal,
     showCopyModal,
+    showRefuseModal,
   ]);
 
   // opções da questão base (pulo)
@@ -153,7 +172,7 @@ export default function QuestionActions({
     load();
   }, [showLinkModal, linkQuestionId]);
 
-  // lista de questionários (cópia) – NÃO pré-seleciona nada
+  // lista de questionários (cópia)
   useEffect(() => {
     if (!showCopyModal) return;
     (async () => {
@@ -165,6 +184,17 @@ export default function QuestionActions({
       }
     })();
   }, [showCopyModal]);
+
+  // opções para Recusa
+  useEffect(() => {
+    if (!showRefuseModal) return;
+    const load = async (qid: number) => {
+      const res = await getQuestionWithOptions(qid);
+      setRefuseOptions(res?.options ?? []);
+    };
+    if (typeof refuseQuestionId === "number") load(refuseQuestionId);
+    else setRefuseOptions([]);
+  }, [showRefuseModal, refuseQuestionId]);
 
   /* ------------------- HELPERS ------------------- */
   const getQuestionLabel = (q: QuestionProps) =>
@@ -269,7 +299,7 @@ export default function QuestionActions({
         throw new Error("Selecione a questão condicional.");
       if (!linkOperator) throw new Error("Selecione a condição.");
 
-      let condition: any = {
+      const condition: any = {
         condition_question_id: linkQuestionId,
         operator: linkOperator,
         option_id: null as number | null,
@@ -329,7 +359,7 @@ export default function QuestionActions({
     }
   }
 
-  /* ------------------- REORDENAR ------------------- */
+  /* ------------------- REORDENAR (mantido) ------------------- */
 
   // tenta atualizar com sort_order; se falhar, tenta com order
   async function updateOneOrder(questionId: number, newOrder: number) {
@@ -341,6 +371,87 @@ export default function QuestionActions({
       await updateQuestion(questionId, { order: newOrder } as any);
     }
   }
+
+  // ------------------- COPIAR QUESTÃO -------------------
+  async function handleCopyQuestion() {
+    try {
+      if (copyLoading) return;
+
+      if (typeof sourceQuestionId !== "number")
+        throw new Error("Selecione uma questão para copiar.");
+      if (!targetQuizId) throw new Error("Selecione o questionário de destino.");
+      if (!copyCount || copyCount < 1)
+        throw new Error("Informe um número de cópias válido.");
+
+      setCopyLoading(true);
+
+      const full = await getQuestionWithOptions(sourceQuestionId);
+      if (!full?.question) throw new Error("Questão de origem não encontrada.");
+
+      const q = full.question;
+
+      for (let i = 0; i < copyCount; i++) {
+        const uuid = (self as any).crypto?.randomUUID?.() || fallbackUUID();
+
+        const newQuestion = await createQuestion({
+          quiz_id: Number(targetQuizId),
+          type: q.type,
+          title: q.title
+            ? `Cópia de ${q.title}`
+            : q.variable
+              ? `Cópia de ${q.variable}`
+              : "Cópia",
+          variable: q.variable ? `${q.variable}_copia_${i + 1}` : "",
+          uuid,
+          is_required: !!q.is_required,
+          is_hidden: !!q.is_hidden,
+          is_readonly: !!q.is_readonly,
+          shuffle_options: !!q.shuffle_options,
+        });
+
+        if (Array.isArray(full.options) && full.options.length > 0) {
+          for (const opt of full.options) {
+            await createQuestionOption({
+              question_id: newQuestion.id,
+              label: opt.label ?? "",
+              value: opt.value ?? "",
+              is_open: !!opt.is_open,
+              is_exclusive: !!opt.is_exclusive,
+              is_nsnr: !!opt.is_nsnr,
+              sort_order: Number(opt.sort_order ?? 0),
+            });
+          }
+        }
+      }
+
+      setCopyLoading(false);
+      setShowCopyModal(false);
+
+      await Swal.fire({
+        icon: "success",
+        title: "Questão copiada!",
+        text:
+          Number(targetQuizId) === Number(selectedQuizId)
+            ? "As cópias foram adicionadas neste questionário."
+            : "As cópias foram adicionadas no questionário de destino.",
+        timer: 1600,
+        showConfirmButton: false,
+      });
+
+      // limpar apenas campos do modal de cópia
+      setCopyCount(1);
+      setSourceQuestionId("");
+      setTargetQuizId("");
+    } catch (err: any) {
+      setCopyLoading(false);
+      Swal.fire({
+        icon: "error",
+        title: "Erro ao copiar",
+        text: err?.message ?? String(err),
+      });
+    }
+  }
+
 
   async function handleSaveReorder() {
     try {
@@ -389,84 +500,65 @@ export default function QuestionActions({
     }
   }
 
-  /* ------------------- COPIAR QUESTÃO ------------------- */
-  async function handleCopyQuestion() {
+  /* ------------------- SALVAR RECUSA (novo, sem afetar reordenar) ------------------- */
+  async function handleSaveRefuse() {
     try {
-      if (copyLoading) return;
+      if (refuseSaving) return;
+      if (!selectedQuizId) throw new Error("Quiz não selecionado.");
+      if (typeof refuseQuestionId !== "number")
+        throw new Error("Selecione a questão (origem).");
+      if (typeof refuseOptionId !== "number")
+        throw new Error("Selecione a opção.");
+      if (!refuseState) throw new Error("Selecione o estado.");
 
-      if (typeof sourceQuestionId !== "number")
-        throw new Error("Selecione uma questão para copiar.");
-      if (!targetQuizId) throw new Error("Selecione o questionário de destino.");
-      if (!copyCount || copyCount < 1)
-        throw new Error("Informe um número de cópias válido.");
+      setRefuseSaving(true);
 
-      setCopyLoading(true);
+      const operator = refuseState === "selecionado" ? "selected" : "not_selected";
 
-      const full = await getQuestionWithOptions(sourceQuestionId);
-      if (!full?.question) throw new Error("Questão de origem não encontrada.");
+      const payload: any = {
+        quiz_id: Number(selectedQuizId),
+        source_question_id: Number(refuseQuestionId),
+        type: "refuse", // se o backend usa "block", troque aqui
+        logic: "AND",
+        target_question_id: null, // sem alvo
+        sort_order: 0,
+        is_active: 1,
+        conditions: [
+          {
+            condition_question_id: Number(refuseQuestionId),
+            operator,
+            option_id: Number(refuseOptionId),
+            compare_value: null,
+            is_number: 0,
+          },
+        ],
+      };
 
-      const q = full.question;
-
-      for (let i = 0; i < copyCount; i++) {
-        const uuid =
-          (self as any).crypto?.randomUUID?.() || fallbackUUID();
-
-        const newQuestion = await createQuestion({
-          quiz_id: Number(targetQuizId),
-          type: q.type,
-          title: q.title
-            ? `Cópia de ${q.title}`
-            : q.variable
-              ? `Cópia de ${q.variable}`
-              : "Cópia",
-          variable: q.variable ? `${q.variable}_copia_${i + 1}` : "",
-          uuid,
-          is_required: !!q.is_required,
-          is_hidden: !!q.is_hidden,
-          is_readonly: !!q.is_readonly,
-          shuffle_options: !!q.shuffle_options,
-        });
-
-        if (Array.isArray(full.options) && full.options.length > 0) {
-          for (const opt of full.options) {
-            await createQuestionOption({
-              question_id: newQuestion.id,
-              label: opt.label ?? "",
-              value: opt.value ?? "",
-              is_open: !!opt.is_open,
-              is_exclusive: !!opt.is_exclusive,
-              is_nsnr: !!opt.is_nsnr,
-              sort_order: Number(opt.sort_order ?? 0),
-            });
-          }
-        }
-      }
-
-      setCopyLoading(false);
-      setShowCopyModal(false);
+      await createQuestionRule(payload as any);
 
       await Swal.fire({
         icon: "success",
-        title: "Questão copiada!",
-        text:
-          Number(targetQuizId) === Number(selectedQuizId)
-            ? "As cópias foram adicionadas neste questionário."
-            : "As cópias foram adicionadas no questionário de destino.",
-        timer: 1600,
+        title: "Regra de recusa criada!",
+        timer: 1400,
         showConfirmButton: false,
       });
 
-      // limpa somente os campos do modal de cópia
-      setCopyCount(1);
-      setSourceQuestionId("");
-      setTargetQuizId("");
+      // limpar e fechar (não mexe em nada do reordenar)
+      setShowRefuseModal(false);
+      setRefuseOptionId("");
+      setRefuseState("");
+      if (typeof currentQuestionId !== "number") {
+        setRefuseQuestionId("");
+        setRefuseOptions([]);
+      }
     } catch (err: any) {
-      setCopyLoading(false);
       Swal.fire({
         icon: "error",
-        title: "Erro ao copiar",
+        title: "Erro ao salvar",
         text: err?.message ?? String(err),
       });
+    } finally {
+      setRefuseSaving(false);
     }
   }
 
@@ -1082,7 +1174,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: REORDENAR (API) ================= */}
+      {/* ================= MODAL: REORDENAR (API – inalterado) ================= */}
       {showReorderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto relative">
@@ -1108,9 +1200,7 @@ export default function QuestionActions({
                 key={q.id}
                 className="grid grid-cols-12 items-center py-2 border-b text-sm"
               >
-                <div className="col-span-3 truncate">
-                  {q.variable || "-"}
-                </div>
+                <div className="col-span-3 truncate">{q.variable || "-"}</div>
                 <div className="col-span-6 truncate">{q.title || "-"}</div>
                 <div className="col-span-2">
                   <input
@@ -1146,7 +1236,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: RECUSA (UI) ================= */}
+      {/* ================= MODAL: RECUSA (API) ================= */}
       {showRefuseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
@@ -1154,17 +1244,54 @@ export default function QuestionActions({
               Configurar Recusa
             </h2>
 
-            <p className="text-sm text-gray-700 mb-4">Se Q1 tem:</p>
+            {/* Se não veio por props, permita escolher a questão origem */}
+            {typeof currentQuestionId !== "number" && (
+              <div className="mb-4">
+                <label className="block text-sm text-gray-700 mb-1">
+                  Questão (origem)
+                </label>
+                <select
+                  value={refuseQuestionId}
+                  onChange={(e) =>
+                    setRefuseQuestionId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800"
+                >
+                  <option value="">Selecione</option>
+                  {questions.map((q) => (
+                    <option key={q.id} value={q.id}>
+                      {getQuestionLabel(q)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            <div className="flex gap-4 mb-4">
+            <div className="flex gap-4 mb-6">
               <div className="w-1/2">
                 <label className="block text-sm text-gray-700 mb-1">
                   Opção
                 </label>
-                <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
+                <select
+                  value={refuseOptionId}
+                  onChange={(e) =>
+                    setRefuseOptionId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                  disabled={typeof refuseQuestionId !== "number"}
+                >
                   <option value="" disabled>
                     A Opção é OBRIGATÓRIA
                   </option>
+                  {refuseOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.label || opt.value}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -1172,29 +1299,48 @@ export default function QuestionActions({
                 <label className="block text-sm text-gray-700 mb-1">
                   Estado
                 </label>
-                <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
+                <select
+                  value={refuseState}
+                  onChange={(e) => setRefuseState(e.target.value as any)}
+                  className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                  disabled={typeof refuseQuestionId !== "number"}
+                >
                   <option value="" disabled>
                     O Estado é OBRIGATÓRIO
                   </option>
-                  <option>selecionado</option>
-                  <option>não selecionado</option>
+                  <option value="selecionado">selecionado</option>
+                  <option value="não selecionado">não selecionado</option>
                 </select>
               </div>
             </div>
 
-            <p className="text-sm text-gray-800 mb-6">
-              então <strong>recuse</strong>
-            </p>
-
             <div className="flex justify-end gap-2">
               <button
                 className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
-                onClick={() => setShowRefuseModal(false)}
+                onClick={() => {
+                  setShowRefuseModal(false);
+                  setRefuseOptionId("");
+                  setRefuseState("");
+                  if (typeof currentQuestionId !== "number") {
+                    setRefuseOptions([]);
+                    setRefuseQuestionId("");
+                  }
+                }}
+                disabled={refuseSaving}
               >
                 FECHAR
               </button>
-              <button className="px-4 py-2 rounded bg-orange-500 text-white opacity-60 cursor-not-allowed">
-                SALVAR
+              <button
+                className="px-4 py-2 rounded bg-orange-500 text-white disabled:opacity-60"
+                onClick={handleSaveRefuse}
+                disabled={
+                  refuseSaving ||
+                  typeof refuseQuestionId !== "number" ||
+                  typeof refuseOptionId !== "number" ||
+                  !refuseState
+                }
+              >
+                {refuseSaving ? "SALVANDO..." : "SALVAR"}
               </button>
             </div>
           </div>
