@@ -102,12 +102,31 @@ export default function QuestionActions({
   >("");
   const [refuseSaving, setRefuseSaving] = useState(false);
 
+  /* ------------------- RESTRIÇÃO (NOVO, sem mexer no resto) ------------------- */
+  // Alvo (Antes de Q?)
+  const [restrictTargetId, setRestrictTargetId] = useState<number | "">(
+    currentQuestionId ?? ""
+  );
+  // Condição
+  const [restrictQuestionId, setRestrictQuestionId] = useState<number | "">("");
+  const [restrictOptions, setRestrictOptions] = useState<QuestionOptionProps[]>(
+    []
+  );
+  const [restrictOptionId, setRestrictOptionId] = useState<number | "">("");
+  const [restrictState, setRestrictState] = useState<
+    "" | "selecionado" | "não selecionado"
+  >("");
+  // (opcional, UI tem "Pule para"; envio apenas se preenchido)
+  const [restrictJumpId, setRestrictJumpId] = useState<number | "">("");
+  const [restrictSaving, setRestrictSaving] = useState(false);
+
   /* ------------------- EFFECTS ------------------- */
   useEffect(() => {
     if (typeof currentQuestionId === "number") {
       setBaseQuestionId(currentQuestionId);
       setLinkTargetId(currentQuestionId);
       setRefuseQuestionId(currentQuestionId); // garante pré-seleção correta
+      setRestrictTargetId(currentQuestionId); // alvo da restrição
     }
   }, [currentQuestionId]);
 
@@ -190,6 +209,17 @@ export default function QuestionActions({
     if (Number(refuseQuestionId) > 0) load(Number(refuseQuestionId));
     else setRefuseOptions([]);
   }, [showRefuseModal, refuseQuestionId]);
+
+  // opções da questão (restrição) — carrega mesmo sem trocar o select
+  useEffect(() => {
+    if (!showRestrictModal) return;
+    const load = async (qid: number) => {
+      const res = await getQuestionWithOptions(qid);
+      setRestrictOptions(res?.options ?? []);
+    };
+    if (Number(restrictQuestionId) > 0) load(Number(restrictQuestionId));
+    else setRestrictOptions([]);
+  }, [showRestrictModal, restrictQuestionId]);
 
   /* ------------------- HELPERS ------------------- */
   const getQuestionLabel = (q: QuestionProps) =>
@@ -549,6 +579,71 @@ export default function QuestionActions({
     }
   }
 
+  /* ------------------- SALVAR RESTRIÇÃO (NOVO) ------------------- */
+  async function handleSaveRestrict() {
+    try {
+      if (restrictSaving) return;
+      if (!selectedQuizId) throw new Error("Quiz não selecionado.");
+      if (!(Number(restrictTargetId) > 0))
+        throw new Error("Selecione o ‘Alvo / Antes de Q?’.");
+      if (!(Number(restrictQuestionId) > 0))
+        throw new Error("Selecione a questão condicional.");
+      if (!(Number(restrictOptionId) > 0))
+        throw new Error("Selecione a opção.");
+      if (!restrictState) throw new Error("Selecione o estado.");
+
+      const operator =
+        restrictState === "selecionado" ? "selected" : "not_selected";
+
+      const payload = {
+        quiz_id: Number(selectedQuizId),
+        source_question_id: Number(restrictQuestionId),
+        type: "restrict" as const,
+        logic: "AND" as const,
+        target_question_id: Number(restrictTargetId),
+        sort_order: 0,
+        is_active: 1,
+        // se o backend ignorar campos extras, dá para enviar jump_to_question_id
+        // jump_to_question_id: Number(restrictJumpId) > 0 ? Number(restrictJumpId) : null,
+        conditions: [
+          {
+            condition_question_id: Number(restrictQuestionId),
+            operator,
+            option_id: Number(restrictOptionId),
+            compare_value: null,
+            is_number: 0,
+          },
+        ],
+      };
+
+      setRestrictSaving(true);
+      await createQuestionRule(payload as any);
+      setRestrictSaving(false);
+
+      await Swal.fire({
+        icon: "success",
+        title: "Restrição criada!",
+        timer: 1400,
+        showConfirmButton: false,
+      });
+
+      setShowRestrictModal(false);
+      setRestrictQuestionId("");
+      setRestrictOptions([]);
+      setRestrictOptionId("");
+      setRestrictState("");
+      setRestrictJumpId("");
+      // mantém o alvo pré-selecionado
+    } catch (err: any) {
+      setRestrictSaving(false);
+      Swal.fire({
+        icon: "error",
+        title: "Erro ao salvar",
+        text: err?.message ?? String(err),
+      });
+    }
+  }
+
   /* ------------------- RENDER ------------------- */
   return (
     <TooltipProvider>
@@ -742,7 +837,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: RESTRIÇÃO (UI) ================= */}
+      {/* ================= MODAL: RESTRIÇÃO (FUNCIONAL) ================= */}
       {showRestrictModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6">
@@ -750,7 +845,23 @@ export default function QuestionActions({
               Editar Restrição
             </h2>
 
-            <p className="text-sm text-gray-600 mb-4">Antes de Q?</p>
+            <p className="text-sm text-gray-600 mb-2">Antes de Q?</p>
+            <select
+              value={restrictTargetId}
+              onChange={(e) =>
+                setRestrictTargetId(
+                  e.target.value ? Number(e.target.value) : ""
+                )
+              }
+              className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800 mb-4"
+            >
+              <option value="">Selecione</option>
+              {questions.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {getQuestionLabel(q)}
+                </option>
+              ))}
+            </select>
 
             <div className="rounded border p-4">
               <label className="flex items-center gap-2 text-sm text-gray-700 mb-6">
@@ -763,10 +874,16 @@ export default function QuestionActions({
                   <label className="block text-sm text-gray-700 mb-1">
                     Questão
                   </label>
-                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
-                    <option value="" disabled>
-                      A Questão é OBRIGATÓRIA
-                    </option>
+                  <select
+                    value={restrictQuestionId}
+                    onChange={(e) =>
+                      setRestrictQuestionId(
+                        e.target.value ? Number(e.target.value) : ""
+                      )
+                    }
+                    className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800"
+                  >
+                    <option value="">Selecione</option>
                     {questions.map((q) => (
                       <option key={q.id} value={q.id}>
                         {getQuestionLabel(q)}
@@ -779,10 +896,24 @@ export default function QuestionActions({
                   <label className="block text-sm text-gray-700 mb-1">
                     Opção
                   </label>
-                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
+                  <select
+                    value={restrictOptionId}
+                    onChange={(e) =>
+                      setRestrictOptionId(
+                        e.target.value ? Number(e.target.value) : ""
+                      )
+                    }
+                    className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                    disabled={!(Number(restrictQuestionId) > 0)}
+                  >
                     <option value="" disabled>
                       A Opção é OBRIGATÓRIA
                     </option>
+                    {restrictOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label || opt.value}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -790,21 +921,19 @@ export default function QuestionActions({
                   <label className="block text-sm text-gray-700 mb-1">
                     Estado
                   </label>
-                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
+                  <select
+                    value={restrictState}
+                    onChange={(e) => setRestrictState(e.target.value as any)}
+                    className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800"
+                    disabled={!(Number(restrictQuestionId) > 0)}
+                  >
                     <option value="" disabled>
                       O estado é OBRIGATÓRIO
                     </option>
+                    <option value="selecionado">selecionado</option>
+                    <option value="não selecionado">não selecionado</option>
                   </select>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-3 mb-6">
-                <button className="px-3 py-2 rounded bg-blue-600 text-white text-sm opacity-70 cursor-not-allowed">
-                  + OU
-                </button>
-                <button className="px-3 py-2 rounded bg-blue-600 text-white text-sm opacity-70 cursor-not-allowed">
-                  + E
-                </button>
               </div>
 
               <div className="grid grid-cols-12 gap-4">
@@ -812,7 +941,15 @@ export default function QuestionActions({
                   <label className="block text-sm text-gray-700 mb-1">
                     Pule para
                   </label>
-                  <select className="w-full border-b-2 border-gray-300 px-2 py-1 bg-transparent text-gray-800">
+                  <select
+                    value={restrictJumpId}
+                    onChange={(e) =>
+                      setRestrictJumpId(
+                        e.target.value ? Number(e.target.value) : ""
+                      )
+                    }
+                    className="w-full border-b-2 border-gray-300 px-2 py-1 bg-transparent text-gray-800"
+                  >
                     <option value="">Selecione</option>
                     {questions.map((q) => (
                       <option key={q.id} value={q.id}>
@@ -825,10 +962,21 @@ export default function QuestionActions({
                   <label className="block text-sm text-gray-700 mb-1">
                     Alvo
                   </label>
-                  <select className="w-full border-b-2 border-red-500 px-2 py-1 bg-transparent text-gray-800">
-                    <option value="" disabled>
-                      O Alvo é OBRIGATÓRIO
-                    </option>
+                  <select
+                    value={restrictTargetId}
+                    onChange={(e) =>
+                      setRestrictTargetId(
+                        e.target.value ? Number(e.target.value) : ""
+                      )
+                    }
+                    className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800"
+                  >
+                    <option value="">Selecione</option>
+                    {questions.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {getQuestionLabel(q)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -838,11 +986,22 @@ export default function QuestionActions({
               <button
                 className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
                 onClick={() => setShowRestrictModal(false)}
+                disabled={restrictSaving}
               >
                 FECHAR
               </button>
-              <button className="px-4 py-2 rounded bg-orange-500 text-white opacity-60 cursor-not-allowed">
-                SALVAR
+              <button
+                className="px-4 py-2 rounded bg-orange-500 text-white disabled:opacity-60"
+                onClick={handleSaveRestrict}
+                disabled={
+                  restrictSaving ||
+                  !(Number(restrictTargetId) > 0) ||
+                  !(Number(restrictQuestionId) > 0) ||
+                  !(Number(restrictOptionId) > 0) ||
+                  !restrictState
+                }
+              >
+                {restrictSaving ? "SALVANDO..." : "SALVAR"}
               </button>
             </div>
           </div>
