@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Copy,
   SkipForward,
@@ -8,6 +8,7 @@ import {
   ArrowUpDown,
   MessageSquareWarning,
   Hand,
+  Link as LinkIcon,
 } from "lucide-react";
 import {
   Tooltip,
@@ -28,6 +29,13 @@ import { createQuestionRule } from "@/utils/actions/question-rule-data";
 import { createQuestionOption } from "@/utils/actions/question-option-data";
 import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
 import { listQuizzes } from "@/utils/actions/quizzes-data";
+
+/* ===== NOVO: vínculos de opções (variável oculta) ===== */
+import {
+  listOptionLinks,
+  saveOptionLinks,
+  type OptionLink,
+} from "@/utils/actions/question-option-link-data";
 
 /* utils */
 function fallbackUUID(): string {
@@ -53,6 +61,9 @@ export default function QuestionActions({
   const [showRefuseModal, setShowRefuseModal] = useState(false);
   const [showRestrictModal, setShowRestrictModal] = useState(false);
 
+  /* ===== NOVO: modal da Variável Oculta ===== */
+  const [showHiddenVarModal, setShowHiddenVarModal] = useState(false);
+
   /* ------------------- ESTADOS GERAIS ------------------- */
   const [questions, setQuestions] = useState<QuestionProps[]>([]);
   const [orders, setOrders] = useState<Record<number, number>>({});
@@ -69,7 +80,7 @@ export default function QuestionActions({
   const [value, setValue] = useState("");
   const [destination, setDestination] = useState<number | "">("");
 
-  /* ------------------- LINK ------------------- */
+  /* ------------------- LINK (exibição) ------------------- */
   const [linkQuestionId, setLinkQuestionId] = useState<number | "">("");
   const [linkOperator, setLinkOperator] =
     useState<"" | "eq" | "neq" | "selected" | "not_selected">("");
@@ -102,12 +113,10 @@ export default function QuestionActions({
   >("");
   const [refuseSaving, setRefuseSaving] = useState(false);
 
-  /* ------------------- RESTRIÇÃO (NOVO, sem mexer no resto) ------------------- */
-  // Alvo (Antes de Q?)
+  /* ------------------- RESTRIÇÃO (NOVO) ------------------- */
   const [restrictTargetId, setRestrictTargetId] = useState<number | "">(
     currentQuestionId ?? ""
   );
-  // Condição
   const [restrictQuestionId, setRestrictQuestionId] = useState<number | "">("");
   const [restrictOptions, setRestrictOptions] = useState<QuestionOptionProps[]>(
     []
@@ -116,21 +125,57 @@ export default function QuestionActions({
   const [restrictState, setRestrictState] = useState<
     "" | "selecionado" | "não selecionado"
   >("");
-  // (opcional, UI tem "Pule para"; envio apenas se preenchido)
   const [restrictJumpId, setRestrictJumpId] = useState<number | "">("");
   const [restrictSaving, setRestrictSaving] = useState(false);
+
+  /* ------------------- VARIÁVEL OCULTA (estados) ------------------- */
+  const [hvBaseOptions, setHvBaseOptions] = useState<QuestionOptionProps[]>([]);
+  const [hvBaseOptionId, setHvBaseOptionId] = useState<number | "">("");
+
+  const [hvTargetQuestionId, setHvTargetQuestionId] = useState<number | "">("");
+  const [hvTargetOptions, setHvTargetOptions] = useState<
+    QuestionOptionProps[]
+  >([]);
+
+  const [hvAvailableChecked, setHvAvailableChecked] = useState<number[]>([]);
+  const [hvLinkedChecked, setHvLinkedChecked] = useState<number[]>([]);
+  const [hvLinkedIds, setHvLinkedIds] = useState<number[]>([]);
+  const [hvInitialLinkedIds, setHvInitialLinkedIds] = useState<number[]>([]);
+
+  const hvCanLink = useMemo(
+    () =>
+      Number(hvBaseOptionId) > 0 &&
+      Number(hvTargetQuestionId) > 0 &&
+      hvAvailableChecked.length > 0,
+    [hvBaseOptionId, hvTargetQuestionId, hvAvailableChecked]
+  );
+
+  const hvCanUnlink = useMemo(
+    () =>
+      Number(hvBaseOptionId) > 0 &&
+      Number(hvTargetQuestionId) > 0 &&
+      hvLinkedChecked.length > 0,
+    [hvBaseOptionId, hvTargetQuestionId, hvLinkedChecked]
+  );
 
   /* ------------------- EFFECTS ------------------- */
   useEffect(() => {
     if (typeof currentQuestionId === "number") {
       setBaseQuestionId(currentQuestionId);
       setLinkTargetId(currentQuestionId);
-      setRefuseQuestionId(currentQuestionId); // garante pré-seleção correta
-      setRestrictTargetId(currentQuestionId); // alvo da restrição
+      setRefuseQuestionId(currentQuestionId);
+      setRestrictTargetId(currentQuestionId);
+
+      if (currentQuestionId) {
+        getQuestionWithOptions(currentQuestionId).then((res) => {
+          setHvBaseOptions(res?.options ?? []);
+        });
+      } else {
+        setHvBaseOptions([]);
+      }
     }
   }, [currentQuestionId]);
 
-  // carrega perguntas quando algum modal que usa perguntas abrir
   useEffect(() => {
     const needsQuestions =
       showReorderModal ||
@@ -138,7 +183,8 @@ export default function QuestionActions({
       showSkipModal ||
       showLinkModal ||
       showCopyModal ||
-      showRefuseModal;
+      showRefuseModal ||
+      showHiddenVarModal;
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
@@ -159,9 +205,9 @@ export default function QuestionActions({
     showLinkModal,
     showCopyModal,
     showRefuseModal,
+    showHiddenVarModal,
   ]);
 
-  // opções da questão base (pulo)
   useEffect(() => {
     if (!showSkipModal) return;
     const load = async (qid: number) => {
@@ -172,7 +218,6 @@ export default function QuestionActions({
     else setBaseOptions([]);
   }, [showSkipModal, baseQuestionId]);
 
-  // opções da questão condicional (link)
   useEffect(() => {
     if (!showLinkModal) return;
     const load = async () => {
@@ -186,7 +231,6 @@ export default function QuestionActions({
     load();
   }, [showLinkModal, linkQuestionId]);
 
-  // lista de questionários (cópia)
   useEffect(() => {
     if (!showCopyModal) return;
     (async () => {
@@ -199,7 +243,6 @@ export default function QuestionActions({
     })();
   }, [showCopyModal]);
 
-  // opções da questão (recusa) — usa Number() para aceitar "3" ou 3
   useEffect(() => {
     if (!showRefuseModal) return;
     const load = async (qid: number) => {
@@ -210,7 +253,6 @@ export default function QuestionActions({
     else setRefuseOptions([]);
   }, [showRefuseModal, refuseQuestionId]);
 
-  // opções da questão (restrição) — carrega mesmo sem trocar o select
   useEffect(() => {
     if (!showRestrictModal) return;
     const load = async (qid: number) => {
@@ -220,6 +262,48 @@ export default function QuestionActions({
     if (Number(restrictQuestionId) > 0) load(Number(restrictQuestionId));
     else setRestrictOptions([]);
   }, [showRestrictModal, restrictQuestionId]);
+
+  /* ===== VARIÁVEL OCULTA: carregar opções e vínculos ===== */
+  useEffect(() => {
+    if (!showHiddenVarModal) return;
+
+    (async () => {
+      try {
+        setHvTargetOptions([]);
+        setHvLinkedIds([]);
+        setHvInitialLinkedIds([]);
+        setHvAvailableChecked([]);
+        setHvLinkedChecked([]);
+
+        if (!(Number(hvTargetQuestionId) > 0)) return;
+
+        const full = await getQuestionWithOptions(Number(hvTargetQuestionId));
+        const opts = full?.options ?? [];
+        setHvTargetOptions(opts);
+
+        if (Number(hvBaseOptionId) > 0 && selectedQuizId && currentQuestionId) {
+          const rows = await listOptionLinks({
+            quiz_id: Number(selectedQuizId),
+            source_question_id: Number(currentQuestionId),
+            source_option_id: Number(hvBaseOptionId),
+            target_question_id: Number(hvTargetQuestionId),
+          });
+
+          const already = (rows || []).map((r) => r.target_option_id);
+          setHvLinkedIds(already);
+          setHvInitialLinkedIds(already);
+        }
+      } catch {
+        /* silencioso */
+      }
+    })();
+  }, [
+    showHiddenVarModal,
+    hvTargetQuestionId,
+    hvBaseOptionId,
+    selectedQuizId,
+    currentQuestionId,
+  ]);
 
   /* ------------------- HELPERS ------------------- */
   const getQuestionLabel = (q: QuestionProps) =>
@@ -308,7 +392,7 @@ export default function QuestionActions({
     }
   }
 
-  /* ------------------- SALVAR LINK ------------------- */
+  /* ------------------- SALVAR LINK (exibição) ------------------- */
   async function handleSaveLink() {
     try {
       if (!selectedQuizId) throw new Error("Quiz não selecionado.");
@@ -537,7 +621,7 @@ export default function QuestionActions({
       const payload = {
         quiz_id: Number(selectedQuizId),
         source_question_id: Number(refuseQuestionId),
-        type: "refuse" as const, // se sua engine usar "block", troque aqui
+        type: "refuse" as const,
         logic: "AND" as const,
         target_question_id: null as unknown as number | null,
         sort_order: 0,
@@ -603,8 +687,7 @@ export default function QuestionActions({
         target_question_id: Number(restrictTargetId),
         sort_order: 0,
         is_active: 1,
-        // se o backend ignorar campos extras, dá para enviar jump_to_question_id
-        // jump_to_question_id: Number(restrictJumpId) > 0 ? Number(restrictJumpId) : null,
+        // jump_to_question_id (opcional)
         conditions: [
           {
             condition_question_id: Number(restrictQuestionId),
@@ -633,9 +716,102 @@ export default function QuestionActions({
       setRestrictOptionId("");
       setRestrictState("");
       setRestrictJumpId("");
-      // mantém o alvo pré-selecionado
     } catch (err: any) {
       setRestrictSaving(false);
+      Swal.fire({
+        icon: "error",
+        title: "Erro ao salvar",
+        text: err?.message ?? String(err),
+      });
+    }
+  }
+
+  /* ------------------- VARIÁVEL OCULTA: Ações UI ------------------- */
+  function hvToggleAvailable(id: number, checked: boolean) {
+    setHvAvailableChecked((prev) =>
+      checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)
+    );
+  }
+  function hvToggleLinked(id: number, checked: boolean) {
+    setHvLinkedChecked((prev) =>
+      checked ? Array.from(new Set([...prev, id])) : prev.filter((x) => x !== id)
+    );
+  }
+  function hvDoLink() {
+    if (!hvCanLink) return;
+    const next = Array.from(new Set([...hvLinkedIds, ...hvAvailableChecked]));
+    setHvLinkedIds(next);
+    setHvAvailableChecked([]);
+  }
+  function hvDoUnlink() {
+    if (!hvCanUnlink) return;
+    const next = hvLinkedIds.filter((id) => !hvLinkedChecked.includes(id));
+    setHvLinkedIds(next);
+    setHvLinkedChecked([]);
+  }
+
+  async function hvSave() {
+    try {
+      if (!selectedQuizId) throw new Error("Quiz não selecionado.");
+      if (!(Number(currentQuestionId) > 0))
+        throw new Error("Questão atual inválida.");
+      if (!(Number(hvBaseOptionId) > 0))
+        throw new Error("Escolha uma opção base da questão atual.");
+      if (!(Number(hvTargetQuestionId) > 0))
+        throw new Error("Selecione a questão para vincular.");
+
+      const toCreateIds = hvLinkedIds.filter(
+        (id) => !hvInitialLinkedIds.includes(id)
+      );
+      const toDeleteIds = hvInitialLinkedIds.filter(
+        (id) => !hvLinkedIds.includes(id)
+      );
+
+      const baseLink: Pick<
+        OptionLink,
+        "quiz_id" | "source_question_id" | "source_option_id" | "target_question_id"
+      > = {
+        quiz_id: Number(selectedQuizId),
+        source_question_id: Number(currentQuestionId),
+        source_option_id: Number(hvBaseOptionId),
+        target_question_id: Number(hvTargetQuestionId),
+      };
+
+      const toCreate: OptionLink[] = toCreateIds.map((target_option_id) => ({
+        ...baseLink,
+        target_option_id,
+      }));
+      const toDelete: OptionLink[] = toDeleteIds.map((target_option_id) => ({
+        ...baseLink,
+        target_option_id,
+      }));
+
+      const result = await saveOptionLinks({ toCreate, toDelete });
+
+      if (!result?.ok) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Alguns vínculos não foram salvos",
+          text: "Verifique sua conexão e tente novamente.",
+        });
+      } else {
+        await Swal.fire({
+          icon: "success",
+          title: "Vínculos salvos!",
+          timer: 1300,
+          showConfirmButton: false,
+        });
+      }
+
+      setShowHiddenVarModal(false);
+      setHvBaseOptionId("");
+      setHvTargetQuestionId("");
+      setHvTargetOptions([]);
+      setHvLinkedIds([]);
+      setHvInitialLinkedIds([]);
+      setHvAvailableChecked([]);
+      setHvLinkedChecked([]);
+    } catch (err: any) {
       Swal.fire({
         icon: "error",
         title: "Erro ao salvar",
@@ -648,16 +824,19 @@ export default function QuestionActions({
   return (
     <TooltipProvider>
       <div className="flex gap-4 mb-4">
+        {/* Copiar questão */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
               onClick={() => {
-                setSourceQuestionId(""); // abre em branco como você pediu
+                setSourceQuestionId("");
                 setTargetQuizId("");
                 setShowCopyModal(true);
               }}
+              aria-label="Copiar questão"
+              title="Copiar questão"
             >
               <Copy size={20} />
             </button>
@@ -665,12 +844,15 @@ export default function QuestionActions({
           <TooltipContent>Copiar questão</TooltipContent>
         </Tooltip>
 
+        {/* Adicionar Restrição */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
               onClick={() => setShowRestrictModal(true)}
+              aria-label="Adicionar Restrição"
+              title="Adicionar Restrição"
             >
               <MessageSquareWarning size={20} />
             </button>
@@ -678,12 +860,15 @@ export default function QuestionActions({
           <TooltipContent>Adicionar Restrição</TooltipContent>
         </Tooltip>
 
+        {/* Pular questão */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
               onClick={() => setShowSkipModal(true)}
+              aria-label="Pular questão"
+              title="Pular questão"
             >
               <SkipForward size={20} />
             </button>
@@ -691,25 +876,42 @@ export default function QuestionActions({
           <TooltipContent>Pular questão</TooltipContent>
         </Tooltip>
 
+        {/* Vincular questões (mostrar/ocultar) */}
+
+        {/* Variável Oculta */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
-              onClick={() => setShowLinkModal(true)}
+              onClick={() => {
+                if (Number(currentQuestionId) > 0) {
+                  getQuestionWithOptions(Number(currentQuestionId)).then((res) =>
+                    setHvBaseOptions(res?.options ?? [])
+                  );
+                } else {
+                  setHvBaseOptions([]);
+                }
+                setShowHiddenVarModal(true);
+              }}
+              aria-label="Criar Variável Oculta"
+              title="Criar Variável Oculta"
             >
-              <Link2 size={20} />
+              <LinkIcon size={20} />
             </button>
           </TooltipTrigger>
           <TooltipContent>Vincular questões</TooltipContent>
         </Tooltip>
 
+        {/* Reordenar */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
               onClick={() => setShowReorderModal(true)}
+              aria-label="Reordenar questões"
+              title="Reordenar questões"
             >
               <ArrowUpDown size={20} />
             </button>
@@ -717,13 +919,13 @@ export default function QuestionActions({
           <TooltipContent>Reordenar questões</TooltipContent>
         </Tooltip>
 
+        {/* Recusa */}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
               className="hover:text-orange-500 transition-colors"
               onClick={() => {
-                // garante que já abre habilitado mesmo se vier pré-selecionado
                 setRefuseQuestionId(
                   Number(currentQuestionId) > 0 ? Number(currentQuestionId) : ""
                 );
@@ -731,6 +933,8 @@ export default function QuestionActions({
                 setRefuseState("");
                 setShowRefuseModal(true);
               }}
+              aria-label="Adicionar Recusa"
+              title="Adicionar Recusa"
             >
               <Hand size={20} />
             </button>
@@ -738,6 +942,241 @@ export default function QuestionActions({
           <TooltipContent>Adicionar Recusa</TooltipContent>
         </Tooltip>
       </div>
+
+      {/* ================= MODAL: VARIÁVEL OCULTA ================= */}
+      {showHiddenVarModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6">
+            <h2 className="text-lg font-semibold mb-1 text-gray-800">
+              Criar Variável Oculta
+            </h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Crie vínculos entre as questões
+            </p>
+
+            <div className="grid grid-cols-12 gap-6">
+              {/* Coluna Esquerda */}
+              <div className="col-span-12 md:col-span-5">
+                <p className="text-sm text-gray-700 mb-2">
+                  Opções (da questão atual)
+                </p>
+                <select
+                  value={hvBaseOptionId}
+                  onChange={(e) =>
+                    setHvBaseOptionId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800"
+                >
+                  <option value="">Selecione uma opção base</option>
+                  {hvBaseOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label || o.value || `Opção ${o.id}`}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="mt-4 rounded border p-3">
+                  <p className="text-sm text-gray-600 mb-2">Disponíveis</p>
+
+                  <div className="mb-2">
+                    <input
+                      placeholder="(Opcional) Buscar nos disponíveis"
+                      className="w-full border-b px-2 py-1 outline-none text-sm"
+                      onChange={(e) => {
+                        const q = e.target.value.toLowerCase();
+                        const ids = hvTargetOptions
+                          .filter((op) =>
+                            (op.label || op.value || "")
+                              .toLowerCase()
+                              .includes(q)
+                          )
+                          .map((op) => op.id!);
+                        setHvAvailableChecked((prev) =>
+                          prev.filter((id) => ids.includes(id))
+                        );
+                      }}
+                    />
+                  </div>
+
+                  <div className="max-h-64 overflow-auto pr-1">
+                    <label className="flex items-center gap-2 text-sm mb-2">
+                      <input
+                        type="checkbox"
+                        checked={
+                          hvTargetOptions.length > 0 &&
+                          hvTargetOptions.every((o) =>
+                            hvAvailableChecked.includes(o.id!)
+                          )
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setHvAvailableChecked(
+                              hvTargetOptions.map((o) => o.id!)
+                            );
+                          } else {
+                            setHvAvailableChecked([]);
+                          }
+                        }}
+                      />
+                      Selecionar Todos
+                    </label>
+
+                    {hvTargetOptions.length === 0 && (
+                      <p className="text-xs text-gray-500">
+                        Nenhuma opção disponível.
+                      </p>
+                    )}
+
+                    {hvTargetOptions.map((op) => (
+                      <label
+                        key={op.id}
+                        className="flex items-center gap-2 text-sm py-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={hvAvailableChecked.includes(op.id!)}
+                          onChange={(e) =>
+                            hvToggleAvailable(op.id!, e.target.checked)
+                          }
+                        />
+                        {op.label || op.value}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Centro */}
+              <div className="col-span-12 md:col-span-2 flex flex-col items-center justify-center gap-3">
+                <button
+                  className={`px-4 py-2 rounded text-white text-sm ${hvCanLink
+                    ? "bg-blue-600 hover:bg-blue-700"
+                    : "bg-blue-400 cursor-not-allowed"
+                    }`}
+                  disabled={!hvCanLink}
+                  onClick={hvDoLink}
+                >
+                  VINCULAR
+                </button>
+                <button
+                  className={`px-4 py-2 rounded text-white text-sm ${hvCanUnlink
+                    ? "bg-gray-500 hover:bg-gray-600"
+                    : "bg-gray-300 cursor-not-allowed"
+                    }`}
+                  disabled={!hvCanUnlink}
+                  onClick={hvDoUnlink}
+                >
+                  DESVINCULAR
+                </button>
+              </div>
+
+              {/* Coluna Direita */}
+              <div className="col-span-12 md:col-span-5">
+                <p className="text-sm text-gray-700 mb-2">Questões</p>
+                <select
+                  value={hvTargetQuestionId}
+                  onChange={(e) =>
+                    setHvTargetQuestionId(
+                      e.target.value ? Number(e.target.value) : ""
+                    )
+                  }
+                  className="w-full border-b-2 border-orange-500 px-2 py-1 bg-transparent text-gray-800"
+                >
+                  <option value="">Selecione uma questão</option>
+                  {questions
+                    .filter((q) => q.id !== Number(currentQuestionId))
+                    .map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {getQuestionLabel(q)}
+                      </option>
+                    ))}
+                </select>
+
+                <div className="mt-4 rounded border p-3">
+                  <p className="text-sm text-gray-600 mb-2">Vinculados</p>
+
+                  <div className="mb-2">
+                    <input
+                      placeholder="(Opcional) Buscar nos vinculados"
+                      className="w-full border-b px-2 py-1 outline-none text-sm"
+                      onChange={(e) => {
+                        const q = e.target.value.toLowerCase();
+                        const ids = hvTargetOptions
+                          .filter((op) =>
+                            (op.label || op.value || "")
+                              .toLowerCase()
+                              .includes(q)
+                          )
+                          .map((op) => op.id!);
+                        setHvLinkedChecked((prev) =>
+                          prev.filter((id) => ids.includes(id))
+                        );
+                      }}
+                    />
+                  </div>
+
+                  <div className="max-h-64 overflow-auto pr-1">
+                    {hvLinkedIds.length === 0 && (
+                      <p className="text-xs text-gray-500">
+                        Nenhum vínculo ainda.
+                      </p>
+                    )}
+
+                    {hvLinkedIds
+                      .map((id) => hvTargetOptions.find((o) => o.id === id))
+                      .filter(Boolean)
+                      .map((op) => (
+                        <label
+                          key={op!.id}
+                          className="flex items-center gap-2 text-sm py-1"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={hvLinkedChecked.includes(op!.id!)}
+                            onChange={(e) =>
+                              hvToggleLinked(op!.id!, e.target.checked)
+                            }
+                          />
+                          {op!.label || op!.value}
+                        </label>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition"
+                onClick={() => {
+                  setShowHiddenVarModal(false);
+                  setHvBaseOptionId("");
+                  setHvTargetQuestionId("");
+                  setHvTargetOptions([]);
+                  setHvLinkedIds([]);
+                  setHvInitialLinkedIds([]);
+                  setHvAvailableChecked([]);
+                  setHvLinkedChecked([]);
+                }}
+              >
+                CANCELAR
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-orange-500 text-white disabled:opacity-60"
+                onClick={hvSave}
+                disabled={
+                  !(Number(hvBaseOptionId) > 0) ||
+                  !(Number(hvTargetQuestionId) > 0)
+                }
+              >
+                SALVAR
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ================= MODAL: COPIAR (API) ================= */}
       {showCopyModal && (
