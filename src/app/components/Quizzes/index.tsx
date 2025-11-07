@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuiz } from "@/context/QuizContext";
+import { useQuiz } from "@/context/QuizContext"; // <-- adicionar aqui
 
 import { useEffect, useState } from "react";
 import { z } from "zod";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Plus, Pencil, Trash } from "lucide-react";
 import { FaSpinner } from "react-icons/fa";
 import { toast } from "react-toastify";
-import Link from "next/link";
 import { Switch } from "@/components/ui/switch";
 
 import {
@@ -29,6 +28,7 @@ import {
   FormItem,
   FormLabel,
   FormControl,
+  FormMessage,
 } from "@/components/ui/form";
 
 import { Input } from "@/components/ui/input";
@@ -43,14 +43,14 @@ import {
 import { quizzesProps } from "@/utils/types/quizzes";
 
 import Swal from "sweetalert2";
+import Link from "next/link";
 
-// === Tipagens (sem mudar a lógica do app) =====================
 const quizSchema = z.object({
   title: z.string().min(3, "O título é obrigatório"),
   end_date: z.string().min(1, "A data de término é obrigatória"),
   max_sample: z.coerce.number().nullable().optional(),
   status: z.enum(["active", "test", "disabled"]),
-  change_level: z.enum(["low", "high"]).nullable().optional(),
+  change_level: z.string().nullable().optional(),
   value_ns_nr: z.coerce.number(),
   value_skipped: z.coerce.number(),
   value_blank: z.string(),
@@ -64,7 +64,6 @@ const quizSchema = z.object({
 });
 
 type QuizFormData = z.infer<typeof quizSchema>;
-// =============================================================
 
 export default function Quizzes() {
   const { selectedQuizId, setSelectedQuizId, setSelectedQuizTitle } = useQuiz();
@@ -114,9 +113,13 @@ export default function Quizzes() {
     defaultValues,
   });
 
+  const statusValue = editForm.watch("status");
+  const changeLevelValue = editForm.watch("change_level");
+
   const handleOpenEditModal = (quiz: quizzesProps) => {
     setSelectedQuiz(quiz);
 
+    // Converte corretamente valores para booleano
     const normalizeBoolean = (val: any) =>
       val === true || val === "true" || val === 1 || val === "1";
 
@@ -125,21 +128,23 @@ export default function Quizzes() {
       end_date: quiz.end_date?.toString().split("T")[0] || "",
       max_sample: quiz.max_sample,
       status:
-        quiz.status === "active" || quiz.status === "test" || quiz.status === "disabled"
-          ? (quiz.status as "active" | "test" | "disabled")
+        quiz.status === "active" || quiz.status === "test"
+          ? quiz.status
           : "test",
+
       change_level:
-        quiz.status === "active"
-          ? ((quiz.change_level as "low" | "high" | null) ?? "low")
-          : null,
+        quiz.status === "active" ? quiz.change_level ?? "low" : null,
       value_ns_nr: quiz.value_ns_nr,
       value_skipped: quiz.value_skipped,
-      value_blank: String(quiz.value_blank ?? "#"),
+      value_blank: quiz.value_blank.toString(),
       bar_color: quiz.bar_color,
       text_color: quiz.text_color,
       logo_path: quiz.logo_path ?? "",
+
       allow_over_sample: normalizeBoolean(quiz.allow_over_sample),
-      allow_continued_collection: normalizeBoolean(quiz.allow_continued_collection),
+      allow_continued_collection: normalizeBoolean(
+        quiz.allow_continued_collection
+      ),
       is_online: normalizeBoolean(quiz.is_online),
       digitization_mode: normalizeBoolean(quiz.digitization_mode),
     });
@@ -170,6 +175,7 @@ export default function Quizzes() {
 
   const handleCreateSubmit = async (data: QuizFormData) => {
     try {
+      // Transforma os campos booleanos em 0 ou 1
       const payload = {
         ...data,
         allow_over_sample: data.allow_over_sample ? 1 : 0,
@@ -178,7 +184,7 @@ export default function Quizzes() {
         digitization_mode: data.digitization_mode ? 1 : 0,
       };
 
-      await createQuiz(payload as any);
+      await createQuiz(payload as any); // ou ajustar a tipagem se necessário
       toast.success("Quiz criado com sucesso!");
       fetchQuizzes();
       setCreateModalOpen(false);
@@ -192,6 +198,7 @@ export default function Quizzes() {
     if (!selectedQuiz) return;
 
     try {
+      // Converte campos booleanos para 0 ou 1 antes de enviar ao backend
       const payload = {
         ...data,
         allow_over_sample: data.allow_over_sample ? 1 : 0,
@@ -200,7 +207,7 @@ export default function Quizzes() {
         digitization_mode: data.digitization_mode ? 1 : 0,
       };
 
-      await updateQuiz(selectedQuiz.id, payload as any);
+      await updateQuiz(selectedQuiz.id, payload as any); // ou ajustar a tipagem se preferir
       toast.success("Quiz atualizado!");
       fetchQuizzes();
       setEditModalOpen(false);
@@ -209,16 +216,16 @@ export default function Quizzes() {
     }
   };
 
-  const renderExtraFields = (_form: ReturnType<typeof useForm<QuizFormData>>) => <></>;
-
-  const publicBase =
-    process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ??
-    (typeof window !== "undefined" ? window.location.origin : "");
+  const renderExtraFields = (
+    form: ReturnType<typeof useForm<QuizFormData>>
+  ) => <></>;
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
       <div className="flex items-center justify-between border-b pb-3 mb-5">
-        <h1 className="text-2xl font-semibold text-gray-800">Gerenciar Questionários</h1>
+        <h1 className="text-2xl font-semibold text-gray-800">
+          Gerenciar Questionários
+        </h1>
         <div className="flex items-center justify-center">
           <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
             <DialogTrigger asChild>
@@ -228,11 +235,18 @@ export default function Quizzes() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[900px]  max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle className="font-bold">Criar Novo Questionário</DialogTitle>
+                <DialogTitle className="font-bold">
+                  Criar Novo Questionário
+                </DialogTitle>
               </DialogHeader>
               <Form {...createForm}>
-                <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4">
-                  <h3 className="font-semibold">Informações Básicas do Formulário</h3>
+                <form
+                  onSubmit={createForm.handleSubmit(handleCreateSubmit)}
+                  className="space-y-4"
+                >
+                  <h3 className="font-semibold">
+                    Informações Básicas do Formulário
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
                       name="title"
@@ -254,7 +268,11 @@ export default function Quizzes() {
                         <FormItem>
                           <FormLabel>Máx.Amostra(s)</FormLabel>
                           <FormControl>
-                            <Input type="number" {...field} value={field.value ?? ""} />
+                            <Input
+                              type="number"
+                              {...field}
+                              value={field.value ?? ""}
+                            />
                           </FormControl>
                         </FormItem>
                       )}
@@ -289,9 +307,25 @@ export default function Quizzes() {
                         </FormItem>
                       )}
                     />
-                  </div>
 
-                  <h3 className="font-semibold">Padronize os Valores das Questões</h3>
+                    {/* <FormField
+                      name="change_level"
+                      control={createForm.control}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nível de Alteração</FormLabel>
+                          <FormControl>
+                            <select {...field} className="input" disabled>
+                              <option value="">Selecione</option>
+                            </select>
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    /> */}
+                  </div>
+                  <h3 className="font-semibold">
+                    Padronize os Valores das Questões
+                  </h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <FormField
                       name="value_ns_nr"
@@ -330,7 +364,6 @@ export default function Quizzes() {
                       )}
                     />
                   </div>
-
                   <h3 className="font-bold">Estilos</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField
@@ -358,7 +391,6 @@ export default function Quizzes() {
                       )}
                     />
                   </div>
-
                   <FormField
                     name="logo_path"
                     control={createForm.control}
@@ -366,17 +398,23 @@ export default function Quizzes() {
                       <FormItem>
                         <FormLabel>Logo (URL)</FormLabel>
                         <FormControl>
-                          <Input type="text" {...field} value={field.value ?? ""} />
+                          <Input
+                            type="number"
+                            {...field}
+                            value={field.value ?? ""}
+                          />
                         </FormControl>
                       </FormItem>
                     )}
                   />
-
                   <h3 className="font-semibold">Adicionais</h3>
                   <div className="grid grid-cols-1 gap-4">
                     {[
                       { label: "Exceder Amostra", name: "allow_over_sample" },
-                      { label: "Continuar Coleta", name: "allow_continued_collection" },
+                      {
+                        label: "Continuar Coleta",
+                        name: "allow_continued_collection",
+                      },
                       { label: "Online", name: "is_online" },
                       { label: "Modo Digitação", name: "digitization_mode" },
                     ].map(({ label, name }) => (
@@ -392,7 +430,7 @@ export default function Quizzes() {
                             <FormControl>
                               <Switch
                                 checked={Boolean(field.value)}
-                                onCheckedChange={(v) => field.onChange(v)}
+                                onCheckedChange={field.onChange}
                               />
                             </FormControl>
                           </FormItem>
@@ -402,7 +440,10 @@ export default function Quizzes() {
                   </div>
 
                   {renderExtraFields(createForm)}
-                  <Button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white">
+                  <Button
+                    type="submit"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                  >
                     PUBLICAR
                   </Button>
                 </form>
@@ -439,7 +480,11 @@ export default function Quizzes() {
               <div className="flex gap-2">
                 <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
                   <DialogTrigger asChild>
-                    <Button variant="outline" size="icon" onClick={() => handleOpenEditModal(quiz)}>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleOpenEditModal(quiz)}
+                    >
                       <Pencil className="w-4 h-4" />
                     </Button>
                   </DialogTrigger>
@@ -447,20 +492,17 @@ export default function Quizzes() {
                     <DialogHeader>
                       <DialogTitle>Editar Quiz</DialogTitle>
                       <DialogDescription>
-                        <Link
-                          className="text-blue-500 font-medium underline"
-                          href={selectedQuiz ? `${publicBase}/form/${selectedQuiz.id}` : "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          Clique aqui para acessar o LINK DO FORMULÁRIO ONLINE
-                        </Link>
+                        <Link className="text-blue-500 font-medium" href={'#'} target="_blank">Clique aqui para acessar o LINK DO FORMULÁRIO ONLINE</Link>
                       </DialogDescription>
                     </DialogHeader>
-
                     <Form {...editForm}>
-                      <form onSubmit={editForm.handleSubmit(handleEditSubmit)} className="space-y-4">
-                        <h3 className="font-semibold">Informações Básicas do Formulário</h3>
+                      <form
+                        onSubmit={editForm.handleSubmit(handleEditSubmit)}
+                        className="space-y-4"
+                      >
+                        <h3 className="font-semibold">
+                          Informações Básicas do Formulário
+                        </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <FormField
                             name="title"
@@ -482,7 +524,11 @@ export default function Quizzes() {
                               <FormItem>
                                 <FormLabel>Máx. Amostra(s)</FormLabel>
                                 <FormControl>
-                                  <Input type="number" {...field} value={field.value ?? ""} />
+                                  <Input
+                                    type="number"
+                                    {...field}
+                                    value={field.value ?? ""}
+                                  />
                                 </FormControl>
                               </FormItem>
                             )}
@@ -490,7 +536,18 @@ export default function Quizzes() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* STATUS */}
+                          <FormField
+                            name="end_date"
+                            control={editForm.control}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Data Final</FormLabel>
+                                <FormControl>
+                                  <Input type="date" {...field} />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
                           <FormField
                             name="status"
                             control={editForm.control}
@@ -502,9 +559,14 @@ export default function Quizzes() {
                                     {...field}
                                     className="input"
                                     onChange={async (e) => {
-                                      const newValue = e.target.value as "test" | "active" | "disabled";
+                                      const newValue = e.target.value;
 
-                                      if (field.value === "test" && newValue === "active" && selectedQuiz?.id) {
+                                      // Confirmação ao ativar
+                                      if (
+                                        field.value === "test" &&
+                                        newValue === "active" &&
+                                        selectedQuiz?.id
+                                      ) {
                                         setEditModalOpen(false);
 
                                         const result = await Swal.fire({
@@ -518,38 +580,57 @@ export default function Quizzes() {
 
                                         if (result.isConfirmed) {
                                           try {
-                                            await updateQuizStatusOnly(selectedQuiz.id, "active", "low");
+                                            await updateQuizStatusOnly(
+                                              selectedQuiz.id,
+                                              "active",
+                                              "low"
+                                            );
+
                                             field.onChange("active");
-                                            editForm.setValue("change_level", "low");
-                                            toast.success("Status atualizado para ATIVO com sucesso!");
+                                            editForm.setValue(
+                                              "change_level",
+                                              "low"
+                                            );
+                                            toast.success(
+                                              "Status atualizado para ATIVO com sucesso!"
+                                            );
                                           } catch (err) {
                                             console.error(err);
-                                            toast.error("Erro ao atualizar status.");
+                                            toast.error(
+                                              "Erro ao atualizar status."
+                                            );
                                             field.onChange("test");
                                           }
                                         } else {
                                           field.onChange("test");
                                         }
 
-                                        setTimeout(() => setEditModalOpen(true), 100);
+                                        setTimeout(
+                                          () => setEditModalOpen(true),
+                                          100
+                                        );
                                         return;
                                       }
 
+                                      // Apenas troca o status (inclusive para desabilitado)
                                       field.onChange(newValue);
                                     }}
                                   >
-                                    {field.value === "test" && <option value="test">Teste</option>}
+                                    {field.value === "test" && (
+                                      <option value="test">Teste</option>
+                                    )}
                                     <option value="active">Ativo</option>
-                                    {field.value !== "test" ? (
-                                      <option value="disabled">Desabilitado</option>
+                                    {field.value === "active" ||
+                                      field.value === "disabled" ? (
+                                      <option value="disabled">
+                                        Desabilitado
+                                      </option>
                                     ) : null}
                                   </select>
                                 </FormControl>
                               </FormItem>
                             )}
                           />
-
-                          {/* CHANGE LEVEL — correção do TS2367 */}
                           <FormField
                             name="change_level"
                             control={editForm.control}
@@ -558,24 +639,27 @@ export default function Quizzes() {
                                 <FormLabel>Nível de Alteração</FormLabel>
                                 <FormControl>
                                   <select
+                                    name={field.name}
+                                    ref={field.ref}
                                     className="input"
-                                    disabled={editForm.watch("status") !== "active"}
-                                    value={(field.value ?? "") as "" | "low" | "high"}
+                                    disabled={
+                                      editForm.watch("status") !== "active"
+                                    }
+                                    value={field.value ?? ""} // <- garante que nunca será `null`
+                                    onBlur={field.onBlur}
                                     onChange={async (e) => {
-                                      const newValue = (e.target.value ?? "") as "" | "low" | "high";
-                                      const currentValue = (field.value ?? "") as "" | "low" | "high";
+                                      const newValue = e.target.value;
+                                      const currentValue = field.value;
 
-                                      // vazio → null no form state
-                                      if (newValue === "") {
-                                        field.onChange(null);
-                                        return;
-                                      }
+                                      if (newValue === currentValue) return;
 
                                       if (
-                                        (currentValue === "low" && newValue === "high") ||
-                                        (currentValue === "high" && newValue === "low")
+                                        (currentValue === "low" &&
+                                          newValue === "high") ||
+                                        (currentValue === "high" &&
+                                          newValue === "low")
                                       ) {
-                                        setEditModalOpen(false);
+                                        setEditModalOpen(false); // fecha o modal principal
 
                                         const confirmText =
                                           newValue === "high"
@@ -594,10 +678,12 @@ export default function Quizzes() {
                                         if (result.isConfirmed) {
                                           field.onChange(newValue);
                                         } else {
-                                          field.onChange(currentValue as any === "" ? null : currentValue);
+                                          field.onChange(currentValue);
                                         }
 
-                                        setTimeout(() => setEditModalOpen(true), 100);
+                                        setTimeout(() => {
+                                          setEditModalOpen(true); // reabre modal
+                                        }, 100);
                                       } else {
                                         field.onChange(newValue);
                                       }
@@ -613,7 +699,9 @@ export default function Quizzes() {
                           />
                         </div>
 
-                        <h3 className="font-semibold">Padronize os Valores das Questões</h3>
+                        <h3 className="font-semibold">
+                          Padronize os Valores das Questões
+                        </h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           <FormField
                             name="value_ns_nr"
@@ -688,7 +776,11 @@ export default function Quizzes() {
                             <FormItem>
                               <FormLabel>Logo (URL)</FormLabel>
                               <FormControl>
-                                <Input type="text" {...field} value={field.value ?? ""} />
+                                <Input
+                                  type="number"
+                                  {...field}
+                                  value={field.value ?? ""}
+                                />
                               </FormControl>
                             </FormItem>
                           )}
@@ -697,10 +789,19 @@ export default function Quizzes() {
                         <h3 className="font-semibold">Adicionais</h3>
                         <div className="grid grid-cols-1 gap-4">
                           {[
-                            { key: "allow_over_sample", label: "Exceder Amostra" },
-                            { key: "allow_continued_collection", label: "Continuar Coleta" },
+                            {
+                              key: "allow_over_sample",
+                              label: "Exceder Amostra",
+                            },
+                            {
+                              key: "allow_continued_collection",
+                              label: "Continuar Coleta",
+                            },
                             { key: "is_online", label: "Online" },
-                            { key: "digitization_mode", label: "Modo Digitação" },
+                            {
+                              key: "digitization_mode",
+                              label: "Modo Digitação",
+                            },
                           ].map(({ key, label }) => (
                             <FormField
                               key={key}
@@ -712,7 +813,7 @@ export default function Quizzes() {
                                   <FormControl>
                                     <Switch
                                       checked={Boolean(field.value)}
-                                      onCheckedChange={(v) => field.onChange(v)}
+                                      onCheckedChange={field.onChange}
                                     />
                                   </FormControl>
                                 </FormItem>
@@ -723,7 +824,10 @@ export default function Quizzes() {
 
                         {renderExtraFields(editForm)}
 
-                        <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white">
+                        <Button
+                          type="submit"
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                        >
                           Salvar alterações
                         </Button>
                       </form>
@@ -731,7 +835,11 @@ export default function Quizzes() {
                   </DialogContent>
                 </Dialog>
 
-                <Button variant="destructive" size="icon" onClick={() => handleDelete(quiz.id)}>
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={() => handleDelete(quiz.id)}
+                >
                   <Trash className="w-4 h-4" />
                 </Button>
               </div>
