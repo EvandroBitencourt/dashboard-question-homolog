@@ -4,7 +4,7 @@ import "./globals.css";
 import { HideHeaderSidebar } from "./components/HideHeaderSidebar";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { QuizProvider } from '@/context/QuizContext';
+import { QuizProvider } from "@/context/QuizContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,12 +23,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-br">
+    <html lang="pt-br" suppressHydrationWarning>
       <body
+        suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans antialiased`}
       >
         <QuizProvider>
