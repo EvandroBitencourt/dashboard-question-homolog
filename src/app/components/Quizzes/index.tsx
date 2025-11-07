@@ -439,14 +439,7 @@ export default function Quizzes() {
               <div className="flex gap-2">
                 <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
                   <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();            // 👈 evita selecionar o item
-                        handleOpenEditModal(quiz);
-                      }}
-                    >
+                    <Button variant="outline" size="icon" onClick={() => handleOpenEditModal(quiz)}>
                       <Pencil className="w-4 h-4" />
                     </Button>
                   </DialogTrigger>
@@ -459,7 +452,6 @@ export default function Quizzes() {
                           href={selectedQuiz ? `${publicBase}/form/${selectedQuiz.id}` : "#"}
                           target="_blank"
                           rel="noopener noreferrer"
-                          prefetch={false}         {/* 👈 desliga prefetch do Next */}
                         >
                           Clique aqui para acessar o LINK DO FORMULÁRIO ONLINE
                         </Link>
@@ -602,7 +594,7 @@ export default function Quizzes() {
                                         if (result.isConfirmed) {
                                           field.onChange(newValue);
                                         } else {
-                                          field.onChange((currentValue as any) === "" ? null : currentValue);
+                                          field.onChange(currentValue as any === "" ? null : currentValue);
                                         }
 
                                         setTimeout(() => setEditModalOpen(true), 100);
@@ -739,14 +731,7 @@ export default function Quizzes() {
                   </DialogContent>
                 </Dialog>
 
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  onClick={(e) => {
-                    e.stopPropagation();          // 👈 evita selecionar o item
-                    handleDelete(quiz.id);
-                  }}
-                >
+                <Button variant="destructive" size="icon" onClick={() => handleDelete(quiz.id)}>
                   <Trash className="w-4 h-4" />
                 </Button>
               </div>
