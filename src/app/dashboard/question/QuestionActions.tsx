@@ -30,7 +30,7 @@ import { createQuestionOption } from "@/utils/actions/question-option-data";
 import { QuestionProps, QuestionOptionProps } from "@/utils/types/question";
 import { listQuizzes } from "@/utils/actions/quizzes-data";
 
-/* ===== NOVO: vínculos de opções (variável oculta) ===== */
+/* ===== Vínculos de opções (variável oculta) ===== */
 import {
   listOptionLinks,
   saveOptionLinks,
@@ -61,7 +61,6 @@ export default function QuestionActions({
   const [showRefuseModal, setShowRefuseModal] = useState(false);
   const [showRestrictModal, setShowRestrictModal] = useState(false);
 
-  /* ===== NOVO: modal da Variável Oculta ===== */
   const [showHiddenVarModal, setShowHiddenVarModal] = useState(false);
 
   /* ------------------- ESTADOS GERAIS ------------------- */
@@ -113,7 +112,7 @@ export default function QuestionActions({
   >("");
   const [refuseSaving, setRefuseSaving] = useState(false);
 
-  /* ------------------- RESTRIÇÃO (NOVO) ------------------- */
+  /* ------------------- RESTRIÇÃO ------------------- */
   const [restrictTargetId, setRestrictTargetId] = useState<number | "">(
     currentQuestionId ?? ""
   );
@@ -185,6 +184,7 @@ export default function QuestionActions({
       showCopyModal ||
       showRefuseModal ||
       showHiddenVarModal;
+
     if (!selectedQuizId || !needsQuestions) return;
 
     listQuestionsByQuiz(selectedQuizId).then((res) => {
@@ -472,7 +472,6 @@ export default function QuestionActions({
   async function updateOneOrder(questionId: number, newOrder: number) {
     try {
       await updateQuestion(questionId, { sort_order: newOrder } as any);
-      return;
     } catch {
       await updateQuestion(questionId, { order: newOrder } as any);
     }
@@ -566,11 +565,13 @@ export default function QuestionActions({
               question_id: newQuestion.id,
               label: opt.label ?? "",
               value: opt.value ?? "",
-              is_open: !!opt.is_open,
-              is_exclusive: !!opt.is_exclusive,
-              is_nsnr: !!opt.is_nsnr,
+              // 🔴 importante: enviar 0/1, não boolean
+              is_open: opt.is_open ? 1 : 0,
+              is_exclusive: opt.is_exclusive ? 1 : 0,
+              is_nsnr: opt.is_nsnr ? 1 : 0,
               sort_order: Number(opt.sort_order ?? 0),
-            });
+              mask: opt.mask ?? "custom",
+            } as any);
           }
         }
       }
@@ -663,7 +664,7 @@ export default function QuestionActions({
     }
   }
 
-  /* ------------------- SALVAR RESTRIÇÃO (NOVO) ------------------- */
+  /* ------------------- SALVAR RESTRIÇÃO ------------------- */
   async function handleSaveRestrict() {
     try {
       if (restrictSaving) return;
@@ -687,7 +688,6 @@ export default function QuestionActions({
         target_question_id: Number(restrictTargetId),
         sort_order: 0,
         is_active: 1,
-        // jump_to_question_id (opcional)
         conditions: [
           {
             condition_question_id: Number(restrictQuestionId),
@@ -876,8 +876,6 @@ export default function QuestionActions({
           <TooltipContent>Pular questão</TooltipContent>
         </Tooltip>
 
-        {/* Vincular questões (mostrar/ocultar) */}
-
         {/* Variável Oculta */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -886,8 +884,8 @@ export default function QuestionActions({
               className="hover:text-orange-500 transition-colors"
               onClick={() => {
                 if (Number(currentQuestionId) > 0) {
-                  getQuestionWithOptions(Number(currentQuestionId)).then((res) =>
-                    setHvBaseOptions(res?.options ?? [])
+                  getQuestionWithOptions(Number(currentQuestionId)).then(
+                    (res) => setHvBaseOptions(res?.options ?? [])
                   );
                 } else {
                   setHvBaseOptions([]);
@@ -943,7 +941,7 @@ export default function QuestionActions({
         </Tooltip>
       </div>
 
-      {/* ================= MODAL: VARIÁVEL OCULTA ================= */}
+      {/* MODAL: VARIÁVEL OCULTA */}
       {showHiddenVarModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-5xl p-6">
@@ -1178,7 +1176,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: COPIAR (API) ================= */}
+      {/* MODAL: COPIAR */}
       {showCopyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="relative bg-white rounded-lg shadow-lg w-full max-w-sm p-6">
@@ -1276,7 +1274,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: RESTRIÇÃO (FUNCIONAL) ================= */}
+      {/* MODAL: RESTRIÇÃO */}
       {showRestrictModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6">
@@ -1447,7 +1445,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: PULAR (API) ================= */}
+      {/* MODAL: PULAR */}
       {showSkipModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">
@@ -1636,7 +1634,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: REORDENAR (API) ================= */}
+      {/* MODAL: REORDENAR */}
       {showReorderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl p-6 max-h-[90vh] overflow-y-auto relative">
@@ -1698,7 +1696,7 @@ export default function QuestionActions({
         </div>
       )}
 
-      {/* ================= MODAL: RECUSA (API) ================= */}
+      {/* MODAL: RECUSA */}
       {showRefuseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-6">

@@ -33,7 +33,13 @@ export async function createQuestionOption(
         const res = await fetch(BASE_URL, {
             method: "POST",
             headers,
-            body: JSON.stringify(data),
+            body: JSON.stringify({
+                ...data,
+                is_open: data.is_open ? 1 : 0,
+                is_exclusive: data.is_exclusive ? 1 : 0,
+                is_nsnr: data.is_nsnr ? 1 : 0,
+            }),
+
         });
 
         if (!res.ok) {

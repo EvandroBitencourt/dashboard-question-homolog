@@ -62,12 +62,14 @@ export default function SingleChoiceForm({
   }
 
   useEffect(() => {
-    const parsedOptions = options.map(parseOption);
-    const fixedOptions = parsedOptions.map((opt, index) => ({
+    const parsed = options.map(parseOption);
+
+    const fixed = parsed.map((opt, idx) => ({
       ...opt,
-      value: opt.value || String(index + 1),
+      value: opt.is_open ? "" : opt.value || String(idx + 1),
     }));
-    setLocalOptions(fixedOptions);
+
+    setLocalOptions(fixed);
   }, [options]);
 
   function getNextValue(): string {
@@ -84,18 +86,20 @@ export default function SingleChoiceForm({
     setIsLoading(true);
 
     try {
-      let newOptionData: Omit<QuestionOptionProps, "id"> & { label: string } = {
+      let newOption: Omit<QuestionOptionProps, "id"> & { label: string } = {
         question_id: Number(question.id),
         label:
           type === "open"
             ? "Opção aberta"
             : type === "nsnr"
-            ? "NS/NR"
-            : "Nova opção",
-        value: getNextValue(),
-        is_open: type === "open", // boolean
-        is_exclusive: false, // boolean
-        is_nsnr: type === "nsnr", // boolean
+              ? "NS/NR"
+              : "Nova opção",
+
+        value: type === "open" ? "" : getNextValue(),
+
+        is_open: type === "open",
+        is_exclusive: false,
+        is_nsnr: type === "nsnr",
         sort_order: localOptions.length,
         mask: "custom",
       };
@@ -105,15 +109,13 @@ export default function SingleChoiceForm({
         return;
       }
 
-      const createdOption = await createQuestionOption(newOptionData);
+      const created = await createQuestionOption(newOption);
 
-      if (createdOption) {
-        const updated = [...localOptions, parseOption(createdOption)];
+      if (created) {
+        const updated = [...localOptions, parseOption(created)];
         setLocalOptions(updated);
         onOptionsChange?.(updated);
       }
-    } catch (error) {
-      console.error("Erro ao adicionar opção:", error);
     } finally {
       setIsLoading(false);
     }
@@ -133,11 +135,12 @@ export default function SingleChoiceForm({
     onOptionsChange?.(updated);
 
     const option = localOptions[index];
+
     if (option?.id && option.id > 0) {
       setIsLoading(true);
       setShowSaving(true);
       try {
-        const dataToSend: any = {
+        const payload: any = {
           [field]: ["is_open", "is_exclusive", "is_nsnr"].includes(field)
             ? value
               ? 1
@@ -145,9 +148,7 @@ export default function SingleChoiceForm({
             : value,
         };
 
-        await updateQuestionOption(option.id, dataToSend);
-      } catch (error) {
-        console.error("Erro ao atualizar opção:", error);
+        await updateQuestionOption(option.id, payload);
       } finally {
         setIsLoading(false);
         setTimeout(() => setShowSaving(false), 1200);
@@ -167,14 +168,12 @@ export default function SingleChoiceForm({
     if (option?.id && option.id > 0) {
       setIsLoading(true);
       try {
-        const success = await deleteQuestionOption(option.id);
-        if (success) {
+        const ok = await deleteQuestionOption(option.id);
+        if (ok) {
           const updated = localOptions.filter((_, i) => i !== index);
           setLocalOptions(updated);
           onOptionsChange?.(updated);
         }
-      } catch (error) {
-        console.error("Erro ao remover opção:", error);
       } finally {
         setIsLoading(false);
       }
@@ -188,7 +187,7 @@ export default function SingleChoiceForm({
   return (
     <div className="space-y-3">
       {showSaving && (
-        <div className="text-sm text-blue-600 font-medium transition-opacity duration-700">
+        <div className="text-sm text-blue-600 font-medium">
           Salvando alterações...
         </div>
       )}
@@ -201,17 +200,18 @@ export default function SingleChoiceForm({
           {option.is_nsnr ? (
             <>
               <span className="text-xs text-purple-600 font-bold">NS/NR</span>
+
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => handleRemove(index)}
-                disabled={isLoading}
               >
                 <Trash className="w-4 h-4 text-red-500" />
               </Button>
             </>
           ) : (
             <>
+              {/* LABEL */}
               <Input
                 placeholder={
                   option.is_open ? "Texto da opção aberta" : "Texto da opção"
@@ -236,39 +236,44 @@ export default function SingleChoiceForm({
                     handleChange(index, "label", e.target.value);
                   }
                 }}
-                disabled={isLoading}
               />
-              <Input
-                placeholder="Variável"
-                className="w-32"
-                value={option.value}
-                onFocus={() => {
-                  originalValues.current[`${index}`] = {
-                    ...(originalValues.current[`${index}`] || {}),
-                    value: option.value,
-                  };
-                }}
-                onChange={(e) => {
-                  const updated = [...localOptions];
-                  updated[index].value = e.target.value;
-                  setLocalOptions(updated);
-                  onOptionsChange?.(updated);
-                }}
-                onBlur={(e) => {
-                  const original =
-                    originalValues.current[`${index}`]?.value ?? "";
-                  if (original !== e.target.value) {
-                    handleChange(index, "value", e.target.value);
-                  }
-                }}
-                disabled={isLoading}
-              />
+
+              {/* 🔥 AQUI A CORREÇÃO FINAL  
+                  NÃO mostra variável quando is_open === true
+              */}
+              {!option.is_open && (
+                <Input
+                  placeholder="Variável"
+                  className="w-32"
+                  value={option.value}
+                  onFocus={() => {
+                    originalValues.current[`${index}`] = {
+                      ...(originalValues.current[`${index}`] || {}),
+                      value: option.value,
+                    };
+                  }}
+                  onChange={(e) => {
+                    const updated = [...localOptions];
+                    updated[index].value = e.target.value;
+                    setLocalOptions(updated);
+                    onOptionsChange?.(updated);
+                  }}
+                  onBlur={(e) => {
+                    const original =
+                      originalValues.current[`${index}`]?.value ?? "";
+                    if (original !== e.target.value) {
+                      handleChange(index, "value", e.target.value);
+                    }
+                  }}
+                />
+              )}
+
+              {/* MASK somente na opção aberta */}
               {option.is_open && (
                 <select
                   className="border rounded px-2 py-1 text-xs"
                   value={option.mask || "custom"}
                   onChange={(e) => handleMaskChange(index, e.target.value)}
-                  disabled={isLoading}
                 >
                   {maskTypes.map((mask) => (
                     <option key={mask.value} value={mask.value}>
@@ -277,11 +282,11 @@ export default function SingleChoiceForm({
                   ))}
                 </select>
               )}
+
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => handleRemove(index)}
-                disabled={isLoading}
               >
                 <Trash className="w-4 h-4 text-red-500" />
               </Button>
@@ -291,24 +296,18 @@ export default function SingleChoiceForm({
       ))}
 
       <div className="flex gap-2 p-3">
-        <Button
-          variant="outline"
-          onClick={() => handleAddOption("default")}
-          disabled={isLoading}
-        >
+        <Button variant="outline" onClick={() => handleAddOption("default")}>
           + OPÇÃO
         </Button>
-        <Button
-          variant="outline"
-          onClick={() => handleAddOption("open")}
-          disabled={isLoading}
-        >
+
+        <Button variant="outline" onClick={() => handleAddOption("open")}>
           + OPÇÃO ABERTA
         </Button>
+
         <Button
           variant="outline"
           onClick={() => handleAddOption("nsnr")}
-          disabled={isLoading || localOptions.some((o) => o.is_nsnr)}
+          disabled={localOptions.some((o) => o.is_nsnr)}
         >
           + OPÇÃO NS/NR
         </Button>

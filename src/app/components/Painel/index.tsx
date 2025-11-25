@@ -1,6 +1,6 @@
-// app/dashboard/Painel.tsx
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   Card,
   CardHeader,
@@ -9,24 +9,78 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Clock, Download, Hourglass } from "lucide-react";
+import { useQuiz } from "@/context/QuizContext";
+import { getDashboardSummary, type DashboardSummary } from "@/utils/actions/dashboard";
 
-const quotas = [
-  "Masculino 33/33 - (100%)",
-  "Feminino 34/34 - (100%)",
-  "analfabeto/lê e escreve 2/2 - (100%)",
-  "fundamental 18/18 - (100%)",
-  "ensino médio 34/34 - (100%)",
-  "superior ou + 13/13 - (100%)",
-  "Bandeirantes 35/34 - (102%)",
-  "Parque das Emas 29/30 - (96%)",
-  "Parque dos Buritis 3/3 - (100%)",
-];
+function formatDayBR(iso: string) {
+  // iso vem tipo "2025-11-10"
+  const [year, month, day] = iso.split("-").map(Number);
+  const date = new Date(year, (month ?? 1) - 1, day ?? 1);
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
 
 const Painel = () => {
+  const { selectedQuizId, selectedQuizTitle } = useQuiz();
+
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      if (!selectedQuizId) {
+        setSummary(null);
+        setErrorMsg("Nenhum questionário selecionado.");
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setErrorMsg(null);
+
+        const data = await getDashboardSummary(selectedQuizId);
+        setSummary(data);
+      } catch (e: any) {
+        console.error(e);
+        setErrorMsg(e?.message || "Não foi possível carregar os dados do painel.");
+        setSummary(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, [selectedQuizId]);
+
+  const tituloQuiz =
+    selectedQuizTitle || summary?.quiz_title || "Selecione um questionário";
+
   return (
     <section className="p-4 space-y-6">
+      {/* Cabeçalho */}
+      <div className="max-w-screen-xl mx-auto">
+        <h1 className="text-lg font-semibold text-[#e85228] mb-1">
+          Painel do questionário
+        </h1>
+        <p className="text-sm text-gray-600">
+          Questionário:{" "}
+          <span className="font-semibold text-gray-900">{tituloQuiz}</span>
+        </p>
+
+        {errorMsg && (
+          <p className="mt-2 text-xs text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded">
+            {errorMsg}
+          </p>
+        )}
+      </div>
+
       {/* Métricas principais */}
-      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <section className="max-w-screen-xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="flex flex-col items-center">
             <Clock className="w-6 h-6 mb-2 text-gray-600" />
@@ -34,7 +88,13 @@ const Painel = () => {
               Duração Média
             </CardTitle>
             <CardContent>
-              <p className="text-xl font-bold text-center">13.70 min</p>
+              <p className="text-xl font-bold text-center">
+                {loading
+                  ? "Carregando..."
+                  : summary
+                    ? `${summary.avg_duration_minutes.toFixed(2)} min`
+                    : "-"}
+              </p>
             </CardContent>
           </CardHeader>
         </Card>
@@ -46,7 +106,13 @@ const Painel = () => {
               Média de Coletas por Dia
             </CardTitle>
             <CardContent>
-              <p className="text-xl font-bold text-center">33.5</p>
+              <p className="text-xl font-bold text-center">
+                {loading
+                  ? "Carregando..."
+                  : summary
+                    ? summary.daily_average.toFixed(2)
+                    : "-"}
+              </p>
             </CardContent>
           </CardHeader>
         </Card>
@@ -58,50 +124,81 @@ const Painel = () => {
               Previsto X Realizado
             </CardTitle>
             <CardContent>
-              <p className="text-xl font-bold text-center">67/67 (100%)</p>
+              <p className="text-xl font-bold text-center">
+                {loading
+                  ? "Carregando..."
+                  : summary
+                    ? `${summary.total_completed}/${summary.max_sample} (${summary.completion_percent.toFixed(
+                      0
+                    )}%)`
+                    : "-"}
+              </p>
             </CardContent>
           </CardHeader>
         </Card>
       </section>
 
-      {/* Quotas e Gráficos */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Quotas */}
+      <section className="max-w-screen-xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Quotas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-gray-700">
-            {quotas.map((item, index) => (
-              <p key={index} className="border-b pb-1 last:border-none">
-                › {item}
-              </p>
-            ))}
+            {loading && <p>Carregando...</p>}
+
+            {!loading && summary?.quotas?.length === 0 && (
+              <p className="text-gray-500 text-xs">Nenhuma quota cadastrada.</p>
+            )}
+
+            {!loading &&
+              summary?.quotas?.map((q) => (
+                <p key={q.id} className="border-b pb-1 last:border-none">
+                  › {q.option_label} {q.count}/{q.limit} (
+                  {((q.count / q.limit) * 100).toFixed(0)}%)
+                </p>
+              ))}
           </CardContent>
         </Card>
 
+        {/* Coletas por dia */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Coletas por dia</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Aqui você pode substituir por um gráfico real futuramente */}
-            <div className="w-full h-40 bg-gray-100 rounded flex items-center justify-center text-sm text-gray-500">
-              [Gráfico Coletas por dia - Exemplo]
+            <div className="w-full h-auto space-y-2 text-sm text-gray-700">
+              {loading && <p>Carregando...</p>}
+
+              {!loading &&
+                summary?.daily_collections?.map((d, i) => (
+                  <p key={i} className="border-b pb-1 last:border-none">
+                    • {formatDayBR(d.day)}: {d.total} entrevistas
+                  </p>
+                ))}
+
             </div>
           </CardContent>
         </Card>
       </section>
 
-      {/* Tempo médio por entrevistador */}
-      <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* Tempo + Equipe */}
+      <section className="max-w-screen-xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Tempo médio de entrevista</CardTitle>
+            <CardTitle className="text-lg">Tempo médio por entrevistador</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="w-full h-40 bg-gray-100 rounded flex items-center justify-center text-sm text-gray-500">
-              [Gráfico Tempo por entrevistador - Exemplo]
-            </div>
+          <CardContent className="text-sm text-gray-700 space-y-2">
+
+            {loading && <p>Carregando...</p>}
+
+            {!loading &&
+              summary?.team_stats?.map((t, i) => (
+                <p key={i} className="border-b pb-2 last:border-none">
+                  • {t.interviewer_name || "Desktop"} —{" "}
+                  {t.avg_minutes.toFixed(2)} min
+                </p>
+              ))}
           </CardContent>
         </Card>
 
@@ -121,13 +218,15 @@ const Painel = () => {
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b">
-                  <td className="py-2">Lúcia Maria</td>
-                  <td>67</td>
-                  <td>33.50</td>
-                  <td>13.70 min</td>
-                  <td>03/06/2025, 19:47:04</td>
-                </tr>
+                {summary?.team_stats?.map((t, i) => (
+                  <tr key={i} className="border-b">
+                    <td className="py-2">{t.interviewer_name || "Desktop"}</td>
+                    <td>{t.total}</td>
+                    <td>{t.per_day.toFixed(2)}</td>
+                    <td>{t.avg_minutes.toFixed(2)} min</td>
+                    <td>{t.last_date || "-"}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </CardContent>

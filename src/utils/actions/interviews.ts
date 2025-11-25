@@ -1,13 +1,23 @@
-// utils/actions/interviews-public.ts
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+// utils/actions/interviews.ts
+// 👉 Este arquivo é usado no CLIENTE (form público). Para evitar mixed content/CORS,
+// roteamos tudo pelo rewrite do Next: "/_b" → process.env.NEXT_PUBLIC_API_URL.
+
+const CLIENT_BASE = "/_b"; // sempre via proxy
+const DEBUG = true;
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${BASE}${path}`, {
+    const url = `${CLIENT_BASE}${path}`.replace(/(?<!:)\/{2,}/g, "/");
+    DEBUG && console.log("[interviews.ts] fetch:", url, init?.method || "GET");
+    const res = await fetch(url, {
         ...init,
         headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
         cache: "no-store",
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+    if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        DEBUG && console.warn("[interviews.ts] HTTP FAIL:", res.status, txt);
+        throw new Error(`HTTP ${res.status}: ${txt}`);
+    }
     return res.json() as Promise<T>;
 }
 
@@ -18,6 +28,7 @@ export type StartInterviewReq = {
     respondent_name?: string | null;
     respondent_phone?: string | null;
 };
+
 export type StartInterviewRes = { interview: { id: number } };
 
 export function startInterview(body: StartInterviewReq) {
@@ -36,6 +47,7 @@ export type CreateAnswerReq = {
     value_json?: unknown;
     time_spent_ms?: number;
 };
+
 export type CreateAnswerRes = { answer: { id: number } };
 
 export function createAnswer(interviewId: number, body: CreateAnswerReq) {
@@ -55,6 +67,21 @@ export function deleteLastAnswer(interviewId: number) {
 export function finalizeInterview(interviewId: number, durationMs: number) {
     return api<{ ok: true }>(`/api/interviews/${interviewId}/finalize`, {
         method: "POST",
-        body: JSON.stringify({ duration_ms: durationMs }),
+        body: JSON.stringify({
+            interview_id: interviewId,
+            duration_ms: durationMs,
+        }),
     });
+}
+
+/** Verifica no servidor se a entrevista existe (evita ID antigo do localStorage). */
+export async function checkInterviewExists(interviewId: number): Promise<boolean> {
+    try {
+        const url = `${CLIENT_BASE}/api/interviews/${interviewId}/answers`;
+        DEBUG && console.log("[interviews.ts] HEAD/GET exists:", url);
+        const res = await fetch(url, { method: "GET", cache: "no-store" });
+        return res.ok;
+    } catch {
+        return false;
+    }
 }

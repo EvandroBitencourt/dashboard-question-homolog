@@ -11,6 +11,7 @@ import {
   ChartSpline,
   Pencil,
   FileDown,
+  Database, // <<< novo ícone
 } from "lucide-react";
 import {
   TooltipProvider,
@@ -66,16 +67,44 @@ const Sidebar = () => {
       icon: <ChartPie className="h-5 w-5" />,
       href: "/dashboard/inspector",
     },
-    { label: "Editar questões", icon: <Pencil className="h-5 w-5" />, href: "/dashboard/question" },
-    { label: "Quotas", icon: <MessageSquareQuote className="h-5 w-5" />, href: "/dashboard/quotas" },
+    {
+      label: "Editar questões",
+      icon: <Pencil className="h-5 w-5" />,
+      href: "/dashboard/question",
+    },
+    {
+      label: "Quotas",
+      icon: <MessageSquareQuote className="h-5 w-5" />,
+      href: "/dashboard/quotas",
+    },
     {
       label: "Gerenciar dispositivos",
       icon: <Smartphone className="h-5 w-5" />,
       href: "/dashboard/manage-devices",
     },
-    { label: "Localização", icon: <MapPin className="h-5 w-5" />, href: "/dashboard/faq" },
-    { label: "Exportar", icon: <FileDown className="h-5 w-5" />, href: "/dashboard/export-form" },
-    { label: "Gerenciar time", icon: <Users className="h-5 w-5" />, href: "/dashboard/manage-team" },
+    {
+      label: "Localização",
+      icon: <MapPin className="h-5 w-5" />,
+      href: "/dashboard/faq",
+    },
+
+    // <<< NOVO ITEM – ENTREVISTAS / COLETAS >>>
+    {
+      label: "Entrevistas",
+      icon: <Database className="h-5 w-5" />,
+      href: "/dashboard/interviews", // rota da página que você criou
+    },
+
+    {
+      label: "Exportar",
+      icon: <FileDown className="h-5 w-5" />,
+      href: "/dashboard/export-form",
+    },
+    {
+      label: "Gerenciar time",
+      icon: <Users className="h-5 w-5" />,
+      href: "/dashboard/manage-team",
+    },
   ];
 
   return (
