@@ -1,8 +1,10 @@
 import InterviewEdit from "@/app/components/InterviewEdit";
 
-type PageProps = { params: { id: string } };
-
-const InterviewEditPage = ({ params }: PageProps) => {
+export default function InterviewEditPage({
+    params,
+}: {
+    params: { id: string };
+}) {
     const interviewId = Number(params.id);
 
     if (!Number.isFinite(interviewId) || interviewId <= 0) {
@@ -24,6 +26,4 @@ const InterviewEditPage = ({ params }: PageProps) => {
             </div>
         </main>
     );
-};
-
-export default InterviewEditPage;
+}
