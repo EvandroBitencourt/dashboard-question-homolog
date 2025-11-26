@@ -1,3 +1,7 @@
+export const dynamic = "force-dynamic";
+export const dynamicParams = true;
+export const fetchCache = "force-no-store";
+
 import InterviewEdit from "@/app/components/InterviewEdit";
 
 export default function InterviewEditPage({
