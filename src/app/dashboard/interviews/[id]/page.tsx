@@ -4,11 +4,7 @@ export const fetchCache = "force-no-store";
 
 import InterviewEdit from "@/app/components/InterviewEdit";
 
-export default function InterviewEditPage({
-    params,
-}: {
-    params: { id: string };
-}) {
+export default function InterviewEditPage({ params }: any) {
     const interviewId = Number(params.id);
 
     if (!Number.isFinite(interviewId) || interviewId <= 0) {
