@@ -27,9 +27,17 @@ function formatDatePt(iso?: string | null) {
 export default async function FormCoverPage({ params }: PageProps) {
     const { id } = await params;
 
-    // Normaliza a base (remove barras no final)
-    const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+    // ------------------------------
+    // FIXAR A URL AQUI PARA TESTE
+    // ------------------------------
+    // Usando o base público com /_b para que, no navegador,
+    // as chamadas fiquem em https://www.trackingpesquisas.com.br/_b/...
+    // O next.config.mjs (acima) redireciona /_b/* para a API real.
+    // Isso evita qualquer problema com NEXT_PUBLIC_API_URL vindo com \n.
+    const API_BASE = "https://www.trackingpesquisas.com.br/_b".replace(/\/+$/, "");
     const API_OK = Boolean(API_BASE);
+    // ------------------------------
+
     let title = `Formulário #${id}`;
     let endDate: string | null = null;
 
