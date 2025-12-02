@@ -41,6 +41,7 @@ type QuizFull = {
 };
 
 type QuestionOption = {
+    is_open: string | number;
     id: number;
     label: string;
     value?: string | number | null;
@@ -119,6 +120,9 @@ export default function FormStartPage() {
     );
 
     const [answers, setAnswers] = useState<Record<number, any>>({});
+    // Texto digitado quando a opção for aberta
+    const [openText, setOpenText] = useState<string>("");
+
     const total = data?.questions?.length ?? 0;
     const isFinal = idx === total;
     const question = !isFinal ? data?.questions?.[idx] ?? null : null;
@@ -679,31 +683,68 @@ ${errorBox}
                         </h2>
 
                         {/* SINGLE CHOICE */}
+                        {/* SINGLE CHOICE */}
                         {question.type === "single_choice" && (
                             <div className="space-y-3">
+
                                 {(question.options ?? []).map((op) => {
+                                    const isOpenOption =
+                                        op.label?.toLowerCase().includes("aberta") ||
+                                        op.label?.toLowerCase().includes("anotar") ||
+                                        op.is_open === "1" ||
+                                        op.is_open === 1;
+
                                     const checked = answers[question.id] === op.id;
 
                                     return (
-                                        <label
-                                            key={op.id}
-                                            className="flex items-center gap-3 rounded-xl border px-4 py-4 hover:bg-gray-50 cursor-pointer"
-                                        >
-                                            <input
-                                                name={`q-${question.id}`}
-                                                type="radio"
-                                                className="h-4 w-4"
-                                                checked={checked}
-                                                onChange={() =>
-                                                    handleSelectSingle(question, op.id)
-                                                }
-                                            />
-                                            <span className="text-gray-800">{op.label}</span>
-                                        </label>
+                                        <div key={op.id} className="rounded-xl border px-4 py-4">
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name={`q-${question.id}`}
+                                                    className="h-4 w-4"
+                                                    checked={checked}
+                                                    onChange={() => {
+                                                        setAnswers((prev) => ({
+                                                            ...prev,
+                                                            [question.id]: op.id,
+                                                        }));
+
+                                                        setOpenText(""); // limpa texto quando troca a opção
+                                                        saveLocal(idx, {
+                                                            ...answers,
+                                                            [question.id]: op.id,
+                                                        });
+
+                                                        // se NÃO for opção aberta → comportamento normal
+                                                        if (!isOpenOption) {
+                                                            handleSelectSingle(question, op.id);
+                                                        }
+                                                    }}
+                                                />
+
+                                                <span className="text-gray-800">{op.label}</span>
+                                            </label>
+
+                                            {/* SE FOR OPÇÃO ABERTA E TÁ SELECIONADA, MOSTRA O INPUT */}
+                                            {isOpenOption && checked && (
+                                                <input
+                                                    type="text"
+                                                    className="mt-3 w-full rounded-md border px-3 py-2"
+                                                    placeholder="Digite sua resposta"
+                                                    value={openText}
+                                                    onChange={(e) => {
+                                                        setOpenText(e.target.value);
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
                                     );
                                 })}
+
                             </div>
                         )}
+
 
                         {/* MULTIPLE CHOICE */}
                         {question.type === "multiple_choice" && (
@@ -767,11 +808,77 @@ ${errorBox}
 
                             <button
                                 type="button"
-                                disabled
-                                className="rounded-md bg-gray-300 px-5 py-2 text-gray-700 cursor-not-allowed"
+                                className={`rounded-md px-5 py-2 font-medium transition ${(() => {
+                                    const selected = answers[question.id];
+                                    const op = (question.options ?? []).find((o) => o.id === selected);
+                                    const isOpenOption =
+                                        op?.label?.toLowerCase().includes("aberta") ||
+                                        op?.label?.toLowerCase().includes("anotar") ||
+                                        op?.is_open === "1" ||
+                                        op?.is_open === 1;
+
+                                    if (isOpenOption) {
+                                        return openText.trim().length === 0
+                                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                            : "bg-[#e74e15] text-white hover:opacity-90";
+                                    }
+
+                                    return selected
+                                        ? "bg-[#e74e15] text-white hover:opacity-90"
+                                        : "bg-gray-300 text-gray-500 cursor-not-allowed";
+                                })()
+                                    }`}
+                                disabled={(() => {
+                                    const selected = answers[question.id];
+                                    const op = (question.options ?? []).find((o) => o.id === selected);
+                                    const isOpenOption =
+                                        op?.label?.toLowerCase().includes("aberta") ||
+                                        op?.label?.toLowerCase().includes("anotar") ||
+                                        op?.is_open === "1" ||
+                                        op?.is_open === 1;
+
+                                    if (isOpenOption) return openText.trim().length === 0;
+                                    return !selected;
+                                })()}
+                                onClick={async () => {
+                                    const selected = answers[question.id];
+                                    const op = (question.options ?? []).find((o) => o.id === selected);
+                                    const isOpenOption =
+                                        op?.label?.toLowerCase().includes("aberta") ||
+                                        op?.label?.toLowerCase().includes("anotar") ||
+                                        op?.is_open === "1" ||
+                                        op?.is_open === 1;
+
+                                    try {
+                                        const id = await ensureInterviewId();
+
+                                        if (isOpenOption) {
+                                            // GRAVA O TEXTO CORRETAMENTE
+                                            await apiCreateAnswer(id, {
+                                                question_id: question.id,
+                                                option_id: selected,
+                                                value_text: openText,   // <-- CAMPO CORRETO DO BD
+                                                time_spent_ms: 0,
+                                            });
+                                        } else {
+                                            // GRAVA OPÇÃO NORMAL (SEM TEXTO)
+                                            await apiCreateAnswer(id, {
+                                                question_id: question.id,
+                                                option_id: selected,
+                                                time_spent_ms: 0,
+                                            });
+                                        }
+
+                                        goNext();
+                                    } catch (e) {
+                                        console.error("Erro ao salvar resposta:", e);
+                                    }
+                                }}
+
                             >
                                 Avançar
                             </button>
+
                         </div>
                     </div>
                 )}

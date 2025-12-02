@@ -319,31 +319,53 @@ const InterviewEdit = ({ interviewId }: Props) => {
                                 {q.type === "single_choice" && (
                                     <div className="space-y-2">
                                         {(q.options ?? []).map((op) => (
-                                            <label
-                                                key={String(op.id)}
-                                                className={`flex items-center gap-2 cursor-pointer rounded-md border px-3 py-2 hover:bg-orange-50 ${Number(selectedOptionId) === Number(op.id)
-                                                    ? "bg-orange-50"
-                                                    : ""
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="radio"
-                                                    name={`q-${q.id}`}
-                                                    className="h-4 w-4"
-                                                    checked={
-                                                        Number(selectedOptionId) === Number(op.id)
-                                                    }
-                                                    onChange={() =>
-                                                        handleChangeSingle(q.id, op.id)
-                                                    }
-                                                />
-                                                <span className="text-sm text-gray-800">
-                                                    {op.label}
-                                                </span>
-                                            </label>
+                                            <div key={String(op.id)}>
+                                                <label
+                                                    className={`flex items-center gap-2 cursor-pointer rounded-md border px-3 py-2 hover:bg-orange-50 ${Number(selectedOptionId) === Number(op.id) ? "bg-orange-50" : ""
+                                                        }`}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name={`q-${q.id}`}
+                                                        className="h-4 w-4"
+                                                        checked={Number(selectedOptionId) === Number(op.id)}
+                                                        onChange={() =>
+                                                            setAnswers((prev) => ({
+                                                                ...prev,
+                                                                [q.id]: {
+                                                                    ...prev[q.id],
+                                                                    option_id: Number(op.id),
+                                                                },
+                                                            }))
+                                                        }
+                                                    />
+
+                                                    <span className="text-sm text-gray-800">{op.label}</span>
+                                                </label>
+
+                                                {/* SE A OPÇÃO FOR ABERTA, MOSTRA O INPUT */}
+                                                {Number(selectedOptionId) === Number(op.id) && op.label.toLowerCase().includes("anotar") && (
+                                                    <input
+                                                        type="text"
+                                                        className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
+                                                        placeholder="Digite a resposta"
+                                                        value={answers[q.id]?.value_text ?? ""}
+                                                        onChange={(e) =>
+                                                            setAnswers((prev) => ({
+                                                                ...prev,
+                                                                [q.id]: {
+                                                                    ...prev[q.id],
+                                                                    value_text: e.target.value,
+                                                                },
+                                                            }))
+                                                        }
+                                                    />
+                                                )}
+                                            </div>
                                         ))}
                                     </div>
                                 )}
+
 
                                 {q.type === "open_text" && (
                                     <textarea
