@@ -603,7 +603,8 @@ export default function Question() {
     <main className="pt-[80px] sm:pl-[190px]">
       <div className="flex md:flex-row flex-col h-[calc(100vh-80px)]">
         {/* Sidebar */}
-        <aside className="md:w-1/3 w-full md:border-r border-b bg-white md:p-4 p-3 md:h-auto h-[48vh] flex flex-col">
+        <aside className="md:w-1/3 w-full md:border-r border-b bg-white md:p-4 p-3 
+                 md:h-auto h-[48vh] flex flex-col overflow-y-auto">
           <div className="flex items-center justify-between md:mb-4 mb-3 sticky top-0 z-10 bg-white pb-2">
             <h2 className="font-bold text-lg">QUESTÕES</h2>
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
