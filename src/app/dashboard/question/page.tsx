@@ -476,15 +476,29 @@ export default function Question() {
         shuffle_options: false,
       });
 
-      await createQuestionOption({
-        question_id: newQuestion.id,
-        label: "",
-        value: "",
-        is_open: false,
-        is_exclusive: false,
-        is_nsnr: false,
-        sort_order: 0,
-      });
+      // 🔥 SE FOR QUESTÃO ABERTA → CRIA OPÇÃO ABERTA AUTOMÁTICA
+      if (questionType === "open") {
+        await createQuestionOption({
+          question_id: newQuestion.id,
+          label: "Opção aberta",
+          value: "",
+          is_open: true,
+          is_exclusive: false,
+          is_nsnr: false,
+          sort_order: 1,
+        });
+      } else {
+        // 🔥 TIPOS NORMAIS → CRIA OPÇÃO COMUM PADRÃO
+        await createQuestionOption({
+          question_id: newQuestion.id,
+          label: "",
+          value: "",
+          is_open: false,
+          is_exclusive: false,
+          is_nsnr: false,
+          sort_order: 0,
+        });
+      }
 
       const convertedQuestion = convertBooleansFromBackend(newQuestion);
       setQuestions((prev) => [...prev, convertedQuestion]);
@@ -495,6 +509,7 @@ export default function Question() {
       window.dispatchEvent(new Event("questions:changed"));
     } catch { /* noop */ }
   }, [selectedQuizId, questionType]);
+
 
   const handleUpdateQuestion = useCallback(
     async (fields: Partial<QuestionProps>) => {
@@ -772,8 +787,12 @@ export default function Question() {
 
               <div className="border rounded p-4">
                 <h4 className="font-medium text-lg mb-3">Opções ({selectedQuestionFull.options.length})</h4>
+
+                {/* ---------- ALTERAÇÃO PRINCIPAL ---------- */}
+                {/* agora também renderizamos SingleChoiceForm quando o tipo for "open" */}
                 {(selectedQuestionFull.question.type === "single_choice" ||
-                  selectedQuestionFull.question.type === "multiple_choice") && (
+                  selectedQuestionFull.question.type === "multiple_choice" ||
+                  selectedQuestionFull.question.type === "open") && (
                     <SingleChoiceForm
                       question={selectedQuestionFull.question}
                       options={selectedQuestionFull.options || []}
@@ -782,12 +801,13 @@ export default function Question() {
                       }}
                     />
                   )}
-                {selectedQuestionFull.question.type !== "single_choice" &&
-                  selectedQuestionFull.question.type !== "multiple_choice" && (
-                    <div className="text-gray-500 italic py-8 text-center">
-                      Opções para tipo "{QUESTION_TYPE_LABELS[selectedQuestionFull.question.type]}" ainda não implementado.
-                    </div>
-                  )}
+
+                {/* mensagem apenas para tipos que realmente não temos UI */}
+                {!["single_choice", "multiple_choice", "open"].includes(selectedQuestionFull.question.type) && (
+                  <div className="text-gray-500 italic py-8 text-center">
+                    Opções para tipo "{QUESTION_TYPE_LABELS[selectedQuestionFull.question.type]}" ainda não implementado.
+                  </div>
+                )}
               </div>
             </div>
           ) : (
