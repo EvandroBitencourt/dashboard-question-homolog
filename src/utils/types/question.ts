@@ -19,9 +19,9 @@ export interface QuestionOptionProps {
     question_id: number;
     value: string;
     label: string; // ✅ Adicione esta linha
-    is_open: boolean;
-    is_exclusive: boolean;
-    is_nsnr: boolean;
+    is_open: boolean | number | string;
+    is_exclusive: boolean | number | string;
+    is_nsnr: boolean | number | string;
     sort_order: number;
     mask?: string | null;
     // quota?: number | null;           // novo campo

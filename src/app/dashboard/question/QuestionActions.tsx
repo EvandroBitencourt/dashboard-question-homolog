@@ -563,15 +563,34 @@ export default function QuestionActions({
           for (const opt of full.options) {
             await createQuestionOption({
               question_id: newQuestion.id,
-              label: opt.label ?? "",
+              label: opt.label && opt.label.trim() !== "" ? opt.label : opt.value,
               value: opt.value ?? "",
-              // 🔴 importante: enviar 0/1, não boolean
-              is_open: opt.is_open ? 1 : 0,
-              is_exclusive: opt.is_exclusive ? 1 : 0,
-              is_nsnr: opt.is_nsnr ? 1 : 0,
+
+              is_open:
+                opt.is_open === true ||
+                  opt.is_open === 1 ||
+                  opt.is_open === "1"
+                  ? 1
+                  : 0,
+
+              is_exclusive:
+                opt.is_exclusive === true ||
+                  opt.is_exclusive === 1 ||
+                  opt.is_exclusive === "1"
+                  ? 1
+                  : 0,
+
+              is_nsnr:
+                opt.is_nsnr === true ||
+                  opt.is_nsnr === 1 ||
+                  opt.is_nsnr === "1"
+                  ? 1
+                  : 0,
+
               sort_order: Number(opt.sort_order ?? 0),
               mask: opt.mask ?? "custom",
             } as any);
+
           }
         }
       }
