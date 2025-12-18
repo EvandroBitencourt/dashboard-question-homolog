@@ -78,12 +78,14 @@ function extractMainFields(summary?: string | null): {
         const norm = normalizeLabel(label);
 
         // casa rótulos mais comuns
-        if (norm.startsWith("sexo")) {
+        if (norm.includes("sexo")) {
             result.sexo = value;
-        } else if (norm.startsWith("qual a sua idade")) {
-            result.idade = value;
-        } else if (norm.startsWith("qual a sua escolaridade")) {
+        }
+        else if (norm.includes("escolaridade")) {
             result.escolaridade = value;
+        }
+        else if (norm.includes("idade")) {
+            result.idade = value;
         }
 
         result.lines.push({ label, value });
