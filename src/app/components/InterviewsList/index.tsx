@@ -259,9 +259,6 @@ export default function InterviewsList() {
                                         <thead className="bg-gray-50 border-b">
                                             <tr>
                                                 <th className="px-4 py-2 text-left font-semibold text-gray-700 w-16">ID</th>
-                                                <th className="px-4 py-2 text-left font-semibold text-gray-700">Nome</th>
-                                                <th className="px-4 py-2 text-left font-semibold text-gray-700">E-mail</th>
-                                                <th className="px-4 py-2 text-left font-semibold text-gray-700">Telefone</th>
                                                 <th className="px-4 py-2 text-left font-semibold text-gray-700">Sexo</th>
                                                 <th className="px-4 py-2 text-left font-semibold text-gray-700">Idade</th>
                                                 <th className="px-4 py-2 text-left font-semibold text-gray-700">Escolaridade</th>
@@ -278,15 +275,6 @@ export default function InterviewsList() {
                                                         className="border-b last:border-0 hover:bg-orange-50/60 transition-colors"
                                                     >
                                                         <td className="px-4 py-2 text-gray-700 font-medium">#{interview.id}</td>
-                                                        <td className="px-4 py-2 text-gray-800">
-                                                            {interview.respondent_name?.trim() || "Sem nome"}
-                                                        </td>
-                                                        <td className="px-4 py-2 text-gray-700">
-                                                            {interview.respondent_email?.trim() || "Sem e-mail"}
-                                                        </td>
-                                                        <td className="px-4 py-2 text-gray-700">
-                                                            {interview.respondent_phone?.trim() || "Sem telefone"}
-                                                        </td>
                                                         <td className="px-4 py-2 text-gray-700">{sexo || "-"}</td>
                                                         <td className="px-4 py-2 text-gray-700">{idade || "-"}</td>
                                                         <td className="px-4 py-2 text-gray-700">{escolaridade || "-"}</td>

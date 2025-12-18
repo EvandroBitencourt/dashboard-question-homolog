@@ -2,7 +2,9 @@ import type { UserProps } from "@/utils/types/user";
 
 const BASE_API_URL = `${process.env.NEXT_PUBLIC_API_URL}/api`;
 
-// 🔐 Busca o token salvo no cookie
+/* ======================================================
+ * 🔐 TOKEN (usado apenas para rotas protegidas)
+ * ====================================================== */
 async function getServerAuthHeaders(): Promise<HeadersInit> {
     const res = await fetch("/api/token", {
         method: "GET",
@@ -22,24 +24,28 @@ async function getServerAuthHeaders(): Promise<HeadersInit> {
     };
 }
 
-// ✅ GET perfil logado
+/* ======================================================
+ * 👤 PERFIL DO USUÁRIO LOGADO
+ * ====================================================== */
 export async function getUserProfile(): Promise<UserProps> {
     const headers = await getServerAuthHeaders();
 
     const res = await fetch(`${BASE_API_URL}/me`, {
         method: "GET",
         headers,
-        cache: "no-cache",
+        cache: "no-store",
     });
 
     if (!res.ok) {
         throw new Error("Erro ao buscar perfil do usuário.");
     }
 
-    return await res.json();
+    return res.json();
 }
 
-// ✅ PUT /me — Atualiza nome, email e senha
+/* ======================================================
+ * ✏️ ATUALIZAR MEU PERFIL
+ * ====================================================== */
 type UpdateUserPayload = {
     username?: string;
     email?: string;
@@ -57,13 +63,50 @@ export async function updateMyProfile(data: UpdateUserPayload) {
 
     if (!res.ok) {
         const error = await res.json().catch(() => ({}));
+
         throw new Error(
             error?.messages?.username ||
             error?.messages?.email ||
             error?.messages?.password ||
+            error?.message ||
             "Erro ao atualizar perfil."
         );
     }
 
-    return await res.json(); // deve retornar { message, user }
+    return res.json(); // { message, user }
+}
+
+/* ======================================================
+ * ➕ CRIAR USUÁRIO (REGISTER - SHIELD)
+ * ====================================================== */
+type CreateUserPayload = {
+    username: string;
+    email: string;
+    password: string;
+    password_confirm: string;
+};
+
+export async function createUser(data: CreateUserPayload) {
+    const res = await fetch(`${BASE_API_URL}/register`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+        },
+        body: JSON.stringify(data),
+    });
+
+    if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+
+        throw new Error(
+            error?.messages?.email ||
+            error?.messages?.username ||
+            error?.messages?.password ||
+            error?.message ||
+            "Erro ao criar usuário."
+        );
+    }
+
+    return res.json(); // { access_token }
 }

@@ -8,6 +8,8 @@ import { toast } from "react-toastify";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { createUser } from "@/utils/actions/user-data";
+
 
 import { getUserProfile, updateMyProfile } from "@/utils/actions/user-data";
 import type { UserProps } from "@/utils/types/user";
@@ -58,6 +60,10 @@ const Header = () => {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dropdownKey, setDropdownKey] = useState(0);
+  const [openCreateUser, setOpenCreateUser] = useState(false);
+
+
   const [user, setUser] = useState<UserProps | null>(null);
 
   const { isClientReady, selectedQuizTitle, setSelectedQuizId, setSelectedQuizTitle } = useQuiz();
@@ -91,6 +97,26 @@ const Header = () => {
       toast.error("Erro ao sair da conta.");
     }
   };
+
+  const handleCreateUser = async (data: { username: any; email: any; password: any; password_confirm: any; }) => {
+    try {
+      await createUser({
+        username: data.username,
+        email: data.email,
+        password: data.password,
+        password_confirm: data.password_confirm,
+      });
+
+      toast.success("Usuário criado com sucesso!");
+      setOpenCreateUser(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao criar usuário"
+      );
+    }
+  };
+
+
 
   const handleUpdate = async (data: FormValues) => {
     try {
@@ -191,7 +217,7 @@ const Header = () => {
         </div>
 
         {/* DIREITA: usuário / menu */}
-        <DropdownMenu onOpenChange={(o) => setOpen(o)}>
+        <DropdownMenu key={dropdownKey} onOpenChange={(o) => setOpen(o)}>
           <DropdownMenuTrigger asChild>
             <div className="flex items-center gap-2 cursor-pointer select-none">
               <Avatar className="w-8 h-8 sm:w-9 sm:h-9">
@@ -222,13 +248,24 @@ const Header = () => {
 
             <DropdownMenuSeparator />
             <DropdownMenuItem><DollarSign className="mr-2 h-4 w-4" />Relatório de créditos</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setDialogOpen(true)}><User className="mr-2 h-4 w-4" />Conta</DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();   // impede o Radix de travar o menu
+                setOpen(false);       // fecha o dropdown corretamente
+                setDialogOpen(true);  // abre o modal
+              }}
+            >
+              <User className="mr-2 h-4 w-4" />Conta
+            </DropdownMenuItem>
+
             <DropdownMenuItem><Info className="mr-2 h-4 w-4" />Relatórios</DropdownMenuItem>
             <DropdownMenuItem>
               <Smartphone className="mr-2 h-4 w-4" />
               <Link href="/dashboard/pins">Administrar PINs</Link>
             </DropdownMenuItem>
-            <DropdownMenuItem><Users className="mr-2 h-4 w-4" />Gerenciar usuários</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setOpenCreateUser(true)}>
+              <Users className="mr-2 h-4 w-4" />Gerenciar usuários
+            </DropdownMenuItem>
             <DropdownMenuItem>
               <User className="mr-2 h-4 w-4" />
               <Link href="/dashboard/interviewers">Gerenciar entrevistadores</Link>
@@ -248,8 +285,109 @@ const Header = () => {
         </DropdownMenu>
       </div>
 
+      {/* MODAL CONTA */}
+      <Dialog
+        modal={false}   // 👈 ISSO RESOLVE
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+      >
+        <DialogContent
+          onInteractOutside={(e) => {
+            e.preventDefault(); // 👈 impede fechar ao clicar fora
+          }}
+        >
+
+          <DialogHeader>
+            <DialogTitle>Conta</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit(handleUpdate)} className="space-y-4">
+            <div>
+              <Input {...register("username")} placeholder="Nome" />
+              {errors.username && (
+                <p className="text-sm text-red-500">{errors.username.message}</p>
+              )}
+            </div>
+
+            <div>
+              <Input {...register("email")} placeholder="E-mail" />
+              {errors.email && (
+                <p className="text-sm text-red-500">{errors.email.message}</p>
+              )}
+            </div>
+
+            <div>
+              <Input
+                type="password"
+                {...register("password")}
+                placeholder="Nova senha (opcional)"
+              />
+              {errors.password && (
+                <p className="text-sm text-red-500">{errors.password.message}</p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button type="submit">Salvar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={openCreateUser} onOpenChange={setOpenCreateUser}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo usuário</DialogTitle>
+          </DialogHeader>
+
+          <form
+            className="space-y-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+
+              const form = e.currentTarget as HTMLFormElement;
+
+              handleCreateUser({
+                username: (form.elements.namedItem("username") as HTMLInputElement).value,
+                email: (form.elements.namedItem("email") as HTMLInputElement).value,
+                password: (form.elements.namedItem("password") as HTMLInputElement).value,
+                password_confirm: (form.elements.namedItem("password_confirm") as HTMLInputElement).value,
+              });
+            }}
+          >
+            <Input name="username" placeholder="Nome" />
+
+            <Input name="email" type="email" placeholder="E-mail" />
+
+            <Input
+              name="password"
+              type="password"
+              placeholder="Senha"
+            />
+
+            <Input
+              name="password_confirm"
+              type="password"
+              placeholder="Confirmar senha"
+            />
+
+            <DialogFooter>
+              <Button type="submit">Criar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+
+
+
     </div>
+
+
+
   );
+
+
 };
 
 export default Header;
