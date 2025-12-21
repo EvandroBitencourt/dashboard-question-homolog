@@ -11,7 +11,8 @@ import {
   ChartSpline,
   Pencil,
   FileDown,
-  Database, // <<< novo ícone
+  Database,
+  FileText, // <<< ÍCONE DE RELATÓRIO
 } from "lucide-react";
 import {
   TooltipProvider,
@@ -87,12 +88,17 @@ const Sidebar = () => {
       icon: <MapPin className="h-5 w-5" />,
       href: "/dashboard/faq",
     },
-
-    // <<< NOVO ITEM – ENTREVISTAS / COLETAS >>>
     {
       label: "Entrevistas",
       icon: <Database className="h-5 w-5" />,
-      href: "/dashboard/interviews", // rota da página que você criou
+      href: "/dashboard/interviews",
+    },
+
+    // <<< NOVO BOTÃO – RELATÓRIOS >>>
+    {
+      label: "Relatórios",
+      icon: <FileText className="h-5 w-5" />,
+      href: "/dashboard/generate-report",
     },
 
     {
@@ -109,9 +115,8 @@ const Sidebar = () => {
 
   return (
     <div className="flex w-full flex-col bg-muted/40">
-      {/* ===== DESKTOP (sm+) – sidebar fixa à esquerda ===== */}
+      {/* ===== DESKTOP ===== */}
       <aside className="hidden sm:flex fixed inset-y-0 left-0 z-10 w-[190px] border-r bg-[#3e3e3e] text-white flex-col">
-        {/* Logo */}
         <div className="flex p-3 items-center justify-center">
           <Link href="/">
             <Image
@@ -125,7 +130,6 @@ const Sidebar = () => {
           </Link>
         </div>
 
-        {/* Ícones */}
         <nav className="flex flex-col items-center flex-1 gap-6 py-5 text-[#f7f7f7]">
           <TooltipProvider>
             {items.map((it) => (
@@ -142,22 +146,10 @@ const Sidebar = () => {
         </nav>
       </aside>
 
-      {/* ===== MOBILE (<sm) – barra superior fixa com ícones roláveis ===== */}
+      {/* ===== MOBILE ===== */}
       <div className="sm:hidden flex flex-col">
-        {/* Barra de ícones; fica logo abaixo do Header (que tem h-14) */}
-        <div
-          className="
-            sticky top-14 z-30
-            bg-[#111827] text-white
-            border-b border-black/10
-          "
-        >
-          <div
-            className="
-              flex items-center gap-3 px-3 py-2
-              overflow-x-auto no-scrollbar
-            "
-          >
+        <div className="sticky top-14 z-30 bg-[#111827] text-white border-b border-black/10">
+          <div className="flex items-center gap-3 px-3 py-2 overflow-x-auto no-scrollbar">
             {items.map((it) => (
               <div key={it.label} className="flex flex-col items-center gap-1">
                 <IconBtn
@@ -167,7 +159,6 @@ const Sidebar = () => {
                 >
                   {it.icon}
                 </IconBtn>
-                {/* legenda opcional; escondida em telas muito pequenas */}
                 <span className="text-[10px] text-gray-200 whitespace-nowrap hidden xs:block">
                   {it.label}
                 </span>
