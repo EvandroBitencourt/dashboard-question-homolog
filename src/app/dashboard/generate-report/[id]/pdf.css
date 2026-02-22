@@ -1,0 +1,30 @@
+body[data-pdf="1"],
+body[data-pdf="1"] main[data-pdf="1"] {
+  background: #ffffff !important;
+}
+
+body[data-pdf="1"] header,
+body[data-pdf="1"] aside,
+body[data-pdf="1"] nav,
+body[data-pdf="1"] footer,
+body[data-pdf="1"] [data-slot="sidebar"],
+body[data-pdf="1"] [data-sidebar],
+body[data-pdf="1"] [data-slot="topbar"],
+body[data-pdf="1"] [data-topbar],
+body[data-pdf="1"] [data-slot="navbar"],
+body[data-pdf="1"] [data-navbar],
+body[data-pdf="1"] [data-slot="header"],
+body[data-pdf="1"] [data-header] {
+  display: none !important;
+}
+
+body[data-pdf="1"] main[data-pdf="1"] {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+body[data-pdf="1"] main[data-pdf="1"] .max-w-screen-xl {
+  max-width: none !important;
+  width: 100% !important;
+  padding: 0 12mm 12mm !important;
+}
