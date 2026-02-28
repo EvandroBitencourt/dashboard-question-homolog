@@ -136,6 +136,7 @@ const Header = () => {
 
   return (
     <div
+      data-header="app"
       className="
         top-0 left-0 right-0 z-40
         bg-[#3e3e3e]
