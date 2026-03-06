@@ -5,6 +5,7 @@ import { HideHeaderSidebar } from "./components/HideHeaderSidebar";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { QuizProvider } from "@/context/QuizContext";
+import { QueryProvider } from "@/providers/query-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -30,11 +31,13 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans antialiased`}
       >
-        <QuizProvider>
-          <HideHeaderSidebar />
-          <ToastContainer position="top-right" autoClose={3000} />
-          {children}
-        </QuizProvider>
+        <QueryProvider>
+          <QuizProvider>
+            <HideHeaderSidebar />
+            <ToastContainer position="top-right" autoClose={3000} />
+            {children}
+          </QuizProvider>
+        </QueryProvider>
       </body>
     </html>
   );

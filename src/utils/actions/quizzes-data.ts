@@ -36,7 +36,19 @@ export async function listQuizzes() {
       next: { revalidate: 60 },
     });
 
-    if (!res.ok) throw new Error("Erro ao listar questionários");
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(
+        "Erro HTTP listQuizzes:",
+        res.status,
+        res.statusText,
+        "URL:",
+        API_URL,
+        "Body:",
+        text
+      );
+      throw new Error("Erro ao listar questionários");
+    }
 
     return await res.json();
   } catch (error) {
@@ -192,5 +204,4 @@ export async function restoreQuiz(id: number) {
     throw error;
   }
 }
-
 
