@@ -66,6 +66,18 @@ async function requestWithAuth<T>(url: string, init: RequestInit): Promise<T> {
         ? String((body as { message?: string }).message)
         : `Erro HTTP ${response.status}`;
 
+    // Log de debug para erros
+    if (response.status >= 400) {
+      console.error(
+        `[API Error] ${response.status} ${url}`,
+        {
+          method: init.method,
+          body: init.body,
+          responseBody: body,
+        }
+      );
+    }
+
     throw new ApiHttpError(message, response.status, body);
   }
 
@@ -111,6 +123,18 @@ export async function createReport(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function getReport(
+  quizId: number,
+  reportId: number
+): Promise<Report> {
+  return requestWithAuth<Report>(
+    `${BASE_API_URL}/questionnaire/${quizId}/reports/${reportId}`,
+    {
+      method: "GET",
+    }
+  );
 }
 
 export async function updateReport(

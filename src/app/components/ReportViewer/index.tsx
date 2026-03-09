@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -30,6 +30,7 @@ import {
 import { Loader2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import {
   useDeleteReport,
+  useReport,
   useReportDataset,
   useReportsList,
   useUpdateReport,
@@ -153,20 +154,25 @@ export default function ReportViewer({ reportId, quizId }: ReportViewerProps) {
   const { selectedQuizId, selectedQuizTitle } = useQuiz();
 
   const queryQuizId = searchParams.get("quizId");
+  // Prioridade: props > searchParams > contexto
   const effectiveQuizId = quizId || (queryQuizId ? Number(queryQuizId) : selectedQuizId);
   const numericReportId = Number(reportId);
 
   const [editOpen, setEditOpen] = useState(false);
 
   const reportsQuery = useReportsList(effectiveQuizId);
+  const reportQuery = useReport(effectiveQuizId, numericReportId);
   const datasetQuery = useReportDataset(effectiveQuizId, numericReportId);
   const updateMutation = useUpdateReport(effectiveQuizId, numericReportId);
   const deleteMutation = useDeleteReport(effectiveQuizId);
 
-  const report = useMemo(
+  const reportFromList = useMemo(
     () => reportsQuery.data?.items?.find((item) => Number(item.id) === numericReportId),
     [reportsQuery.data, numericReportId]
   );
+
+  // Usa o relatório da lista ou busca individual como fallback
+  const report = reportFromList || reportQuery.data;
 
   const interviews = datasetQuery.data?.interviews ?? [];
 
@@ -208,8 +214,20 @@ export default function ReportViewer({ reportId, quizId }: ReportViewerProps) {
     },
   });
 
+  // Atualizar o form quando o relatório muda
+  useEffect(() => {
+    if (report) {
+      form.reset({
+        title: report.title || "",
+        subtitle: report.subtitle || "",
+        status: report.status || "draft",
+      });
+    }
+  }, [report, form]);
+
   const handleRetry = () => {
     reportsQuery.refetch();
+    reportQuery.refetch();
     datasetQuery.refetch();
   };
 
@@ -242,6 +260,7 @@ export default function ReportViewer({ reportId, quizId }: ReportViewerProps) {
       setEditOpen(false);
       reportsQuery.refetch();
     } catch (error) {
+      console.error("Erro ao atualizar relatório:", error);
       toast.error(`Erro ao atualizar: ${extractApiError(error)}`);
     }
   });
@@ -256,7 +275,7 @@ export default function ReportViewer({ reportId, quizId }: ReportViewerProps) {
     );
   }
 
-  if ((reportsQuery.isLoading && !reportsQuery.data) || (datasetQuery.isLoading && !datasetQuery.data)) {
+  if ((reportsQuery.isLoading && !reportsQuery.data) || (datasetQuery.isLoading && !datasetQuery.data) || (reportQuery.isLoading && !reportQuery.data && !reportFromList)) {
     return (
       <main className="min-h-screen bg-[#f7f7f7] pt-[80px] sm:pl-[190px]">
         <div className="mx-auto max-w-screen-xl px-4 pb-10 pt-4">
@@ -268,7 +287,7 @@ export default function ReportViewer({ reportId, quizId }: ReportViewerProps) {
     );
   }
 
-  if (reportsQuery.isError || datasetQuery.isError) {
+  if (reportsQuery.isError || datasetQuery.isError || reportQuery.isError) {
     return (
       <main className="min-h-screen bg-[#f7f7f7] pt-[80px] sm:pl-[190px]">
         <div className="mx-auto max-w-screen-xl px-4 pb-10 pt-4">
@@ -286,7 +305,19 @@ export default function ReportViewer({ reportId, quizId }: ReportViewerProps) {
     return (
       <main className="min-h-screen bg-[#f7f7f7] pt-[80px] sm:pl-[190px]">
         <div className="mx-auto max-w-screen-xl px-4 pb-10 pt-4">
-          <p className="text-sm text-gray-600">Relatório não encontrado na listagem do quiz.</p>
+          <p className="text-sm text-gray-600">Relatório não encontrado.</p>
+          <Button 
+            type="button" 
+            variant="outline" 
+            className="mt-3 gap-2" 
+            onClick={() => {
+              reportsQuery.refetch();
+              reportQuery.refetch();
+            }}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Tentar novamente
+          </Button>
         </div>
       </main>
     );

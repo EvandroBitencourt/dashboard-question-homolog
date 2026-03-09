@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -31,6 +31,8 @@ import { Eye, FileText, Loader2, PlusCircle, RefreshCw, Trash2 } from "lucide-re
 import { useCreateReport, useDeleteReport, useReportsList } from "@/hooks/use-reports";
 import { ApiHttpError } from "@/services/reports.service";
 import { CreateReportPayload } from "@/types/report";
+import { listQuizzes } from "@/utils/actions/quizzes-data";
+import { listReports } from "@/services/reports.service";
 
 type ReportsProps = {
   forcedQuizId?: number | null;
@@ -63,8 +65,17 @@ function formatStatus(status?: string | null) {
 export default function Reports({ forcedQuizId, forcedQuizTitle }: ReportsProps) {
   const router = useRouter();
   const { selectedQuizId, selectedQuizTitle } = useQuiz();
-  const effectiveQuizId = forcedQuizId ?? selectedQuizId;
-  const effectiveQuizTitle = forcedQuizTitle ?? selectedQuizTitle;
+
+  const [manualQuizId, setManualQuizId] = useState<number | null>(null);
+  const [reportQuizzes, setReportQuizzes] = useState<Array<{ id: number; title: string; reportsCount: number }>>([]);
+  const [loadingReportQuizzes, setLoadingReportQuizzes] = useState(false);
+
+  const effectiveQuizId = forcedQuizId ?? selectedQuizId ?? manualQuizId;
+  const manualQuizTitle = useMemo(() => {
+    if (!manualQuizId) return "";
+    return reportQuizzes.find((quiz) => quiz.id === manualQuizId)?.title ?? "";
+  }, [manualQuizId, reportQuizzes]);
+  const effectiveQuizTitle = forcedQuizTitle ?? selectedQuizTitle ?? manualQuizTitle;
   const [createOpen, setCreateOpen] = useState(false);
 
   const reportsQuery = useReportsList(effectiveQuizId);
@@ -80,6 +91,63 @@ export default function Reports({ forcedQuizId, forcedQuizTitle }: ReportsProps)
   });
 
   const reports = useMemo(() => reportsQuery.data?.items ?? [], [reportsQuery.data]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadReportQuizzes() {
+      if (forcedQuizId || selectedQuizId) return;
+
+      setLoadingReportQuizzes(true);
+      try {
+        const quizzes = await listQuizzes();
+        const normalized = Array.isArray(quizzes) ? quizzes : [];
+
+        const results = await Promise.all(
+          normalized.map(async (quiz) => {
+            const quizId = Number(quiz?.id);
+            if (!quizId || Number.isNaN(quizId)) return null;
+
+            try {
+              const reportList = await listReports(quizId);
+              const count = reportList.items.length;
+              if (count === 0) return null;
+
+              return {
+                id: quizId,
+                title: String(quiz?.title || `Questionário ${quizId}`),
+                reportsCount: count,
+              };
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        if (!mounted) return;
+
+        const withReports = results.filter((item): item is { id: number; title: string; reportsCount: number } => Boolean(item));
+        setReportQuizzes(withReports);
+
+        setManualQuizId((prev) => prev ?? withReports[0]?.id ?? null);
+      } finally {
+        if (mounted) setLoadingReportQuizzes(false);
+      }
+    }
+
+    loadReportQuizzes();
+
+    return () => {
+      mounted = false;
+    };
+  }, [forcedQuizId, selectedQuizId]);
+
+  // Refetch ao montar o componente para garantir dados frescos
+  useEffect(() => {
+    if (effectiveQuizId) {
+      reportsQuery.refetch();
+    }
+  }, [effectiveQuizId]);
 
   const handleCreateSubmit = form.handleSubmit(async (values) => {
     if (!effectiveQuizId) {
@@ -140,6 +208,33 @@ export default function Reports({ forcedQuizId, forcedQuizTitle }: ReportsProps)
                 <span className="italic">nenhum quiz selecionado</span>
               )}
             </p>
+            {!forcedQuizId && !selectedQuizId && (
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <label htmlFor="reports-quiz-selector" className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  Questionários com relatório
+                </label>
+                <select
+                  id="reports-quiz-selector"
+                  className="h-9 rounded-md border border-input bg-white px-3 text-sm"
+                  value={manualQuizId ?? ""}
+                  disabled={loadingReportQuizzes || reportQuizzes.length === 0}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    setManualQuizId(Number.isNaN(value) ? null : value);
+                  }}
+                >
+                  {reportQuizzes.length === 0 ? (
+                    <option value="">Nenhum questionário com relatório</option>
+                  ) : (
+                    reportQuizzes.map((quiz) => (
+                      <option key={quiz.id} value={quiz.id}>
+                        #{quiz.id} - {quiz.title} ({quiz.reportsCount})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            )}
           </div>
 
           <Button
@@ -178,7 +273,13 @@ export default function Reports({ forcedQuizId, forcedQuizTitle }: ReportsProps)
               </div>
             )}
 
-            {!reportsQuery.isLoading && !reportsQuery.isError && reports.length === 0 && (
+            {!reportsQuery.isLoading && !reportsQuery.isError && !effectiveQuizId && !loadingReportQuizzes && (
+              <p className="px-6 py-8 text-sm text-gray-500">
+                Selecione um questionário para ver os relatórios.
+              </p>
+            )}
+
+            {!reportsQuery.isLoading && !reportsQuery.isError && !!effectiveQuizId && reports.length === 0 && (
               <p className="px-6 py-8 text-sm text-gray-500">
                 Nenhum relatório criado para este questionário.
               </p>
