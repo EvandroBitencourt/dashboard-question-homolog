@@ -1,9 +1,14 @@
 import InterviewEdit from "@/app/components/InterviewEdit";
 
-type PageProps = { params: { id: string } };
+type PageProps = {
+    params: Promise<{ id: string }> | { id: string };
+};
 
-const InterviewEditPage = ({ params }: PageProps) => {
-    const interviewId = Number(params.id);
+const InterviewEditPage = async ({ params }: PageProps) => {
+    const resolvedParams = await Promise.resolve(params);
+
+    const rawId = resolvedParams?.id;
+    const interviewId = Number(rawId);
 
     if (!Number.isFinite(interviewId) || interviewId <= 0) {
         return (
@@ -12,6 +17,19 @@ const InterviewEditPage = ({ params }: PageProps) => {
                     <p className="text-sm text-red-600">
                         ID de entrevista inválido.
                     </p>
+
+                    <pre className="mt-4 text-xs bg-gray-100 p-3 rounded border overflow-auto">
+                        {JSON.stringify(
+                            {
+                                rawId,
+                                interviewId,
+                                resolvedParams,
+                                paramsType: typeof params,
+                            },
+                            null,
+                            2
+                        )}
+                    </pre>
                 </div>
             </main>
         );
