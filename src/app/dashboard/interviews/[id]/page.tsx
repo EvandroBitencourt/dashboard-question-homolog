@@ -1,10 +1,6 @@
 import InterviewEdit from "@/app/components/InterviewEdit";
 
-type PageProps = {
-    params: {
-        id: string;
-    };
-};
+type PageProps = { params: { id: string } };
 
 const InterviewEditPage = ({ params }: PageProps) => {
     const interviewId = Number(params.id);
