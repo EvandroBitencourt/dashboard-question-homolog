@@ -6,9 +6,7 @@ type PageProps = {
 
 const InterviewEditPage = async ({ params }: PageProps) => {
     const resolvedParams = await Promise.resolve(params);
-
-    const rawId = resolvedParams?.id;
-    const interviewId = Number(rawId);
+    const interviewId = Number(resolvedParams.id);
 
     if (!Number.isFinite(interviewId) || interviewId <= 0) {
         return (
@@ -17,19 +15,6 @@ const InterviewEditPage = async ({ params }: PageProps) => {
                     <p className="text-sm text-red-600">
                         ID de entrevista inválido.
                     </p>
-
-                    <pre className="mt-4 text-xs bg-gray-100 p-3 rounded border overflow-auto">
-                        {JSON.stringify(
-                            {
-                                rawId,
-                                interviewId,
-                                resolvedParams,
-                                paramsType: typeof params,
-                            },
-                            null,
-                            2
-                        )}
-                    </pre>
                 </div>
             </main>
         );
