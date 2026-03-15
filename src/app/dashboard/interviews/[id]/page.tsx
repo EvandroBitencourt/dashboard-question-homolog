@@ -1,10 +1,12 @@
-export const dynamic = "force-dynamic";
-export const dynamicParams = true;
-export const fetchCache = "force-no-store";
-
 import InterviewEdit from "@/app/components/InterviewEdit";
 
-export default function InterviewEditPage({ params }: any) {
+type PageProps = {
+    params: {
+        id: string;
+    };
+};
+
+const InterviewEditPage = ({ params }: PageProps) => {
     const interviewId = Number(params.id);
 
     if (!Number.isFinite(interviewId) || interviewId <= 0) {
@@ -26,4 +28,6 @@ export default function InterviewEditPage({ params }: any) {
             </div>
         </main>
     );
-}
+};
+
+export default InterviewEditPage;
