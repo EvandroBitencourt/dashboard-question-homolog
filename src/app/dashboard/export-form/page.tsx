@@ -1,6 +1,6 @@
 import Export from "@/app/components/Export";
 
-const exportForm = () => {
+const ExportForm = () => {
     return (
         <main className="pt-[30px] sm:pl-[190px]">
             <div className="max-w-screen-xl mx-auto px-4">
@@ -10,4 +10,4 @@ const exportForm = () => {
     );
 };
 
-export default exportForm;
+export default ExportForm;
