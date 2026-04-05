@@ -15,9 +15,6 @@ type InterviewSummary = {
     id: number;
     quiz_id: number;
     interviewer_name?: string | null;
-    respondent_name?: string | null;
-    respondent_email?: string | null;
-    respondent_phone?: string | null;
     finished_at?: string | null;
     duration_ms?: number | null;
     source?: string | null;
@@ -144,9 +141,6 @@ export default function InterviewsList() {
             <p><b>ID:</b> ${interview.id}</p>
             <p><b>Questionário (quiz_id):</b> ${interview.quiz_id}</p>
             <p><b>Entrevistador:</b> ${interview.interviewer_name || "-"}</p>
-            <p><b>Nome do entrevistado:</b> ${interview.respondent_name || "-"}</p>
-            <p><b>E-mail:</b> ${interview.respondent_email || "Sem e-mail"}</p>
-            <p><b>Telefone:</b> ${interview.respondent_phone || "Sem telefone"}</p>
             <p><b>Origem:</b> ${interview.source || "-"}</p>
             <hr style="margin:8px 0;" />
             <p style="margin:0 0 4px 0"><b>Respostas:</b></p>

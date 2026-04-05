@@ -60,27 +60,6 @@ type Question = {
 /* ======================= HELPERS / MÁSCARAS =============================== */
 /* ========================================================================== */
 
-const onlyDigits = (s: string) => (s || "").replace(/\D+/g, "");
-
-const maskPhoneBR = (v: string) => {
-    const d = onlyDigits(v).slice(0, 11);
-
-    if (d.length <= 10) {
-        return d.replace(
-            /^(\d{0,2})(\d{0,4})(\d{0,4}).*/,
-            (__, a, b, c) =>
-                a && b && c
-                    ? `(${a}) ${b}-${c}`
-                    : a && b
-                        ? `(${a}) ${b}`
-                        : a
-                            ? `(${a}`
-                            : ""
-        );
-    }
-
-    return d.replace(/^(\d{2})(\d{5})(\d{0,4}).*/, "($1) $2-$3");
-};
 
 const clamp = (n: number, min: number, max: number) =>
     Math.max(min, Math.min(max, n));
@@ -136,11 +115,6 @@ export default function FormStartPage() {
     const [interviewId, setInterviewId] = useState<number | null>(null);
     const startAtMsRef = useRef<number | null>(null);
     const startedRef = useRef(false);
-
-    /* identificação final */
-    const [nameFinal, setNameFinal] = useState("");
-    const [phoneFinal, setPhoneFinal] = useState("");
-    const [emailFinal, setEmailFinal] = useState("");
 
     /* ====================================================================== */
     /* ============================== LOAD QUIZ ============================== */
@@ -541,14 +515,6 @@ export default function FormStartPage() {
     const [submitting, setSubmitting] = useState(false);
 
     async function handleFinalize() {
-        if (!emailFinal || !emailFinal.includes("@")) {
-            Swal.fire({
-                icon: "warning",
-                title: "E-mail obrigatório",
-                text: "Informe um e-mail válido para prosseguir.",
-            });
-            return;
-        }
 
         try {
             setSubmitting(true);
@@ -560,9 +526,6 @@ export default function FormStartPage() {
             const diffMs = Math.max(0, endAt - startedAt);
 
             const payload = {
-                respondent_name: nameFinal || null,
-                respondent_phone: phoneFinal || null,
-                respondent_email: emailFinal,
                 duration_ms: diffMs,
             };
 
@@ -894,60 +857,13 @@ ${errorBox}
                         </p>
 
                         <h2 className="text-3xl font-semibold text-gray-900">
-                            Identificação
+                            Finalizar formulário
                         </h2>
 
                         <p className="text-gray-700">
-                            Informe seus dados para concluir.
+                            Clique em finalizar para concluir sua resposta.
                         </p>
-                        {/* CAMPOS DE IDENTIFICAÇÃO */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                            {/* Nome */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm text-gray-700">
-                                    Nome completo
-                                </label>
-                                <input
-                                    className="rounded-md border px-3 py-2"
-                                    placeholder="Seu nome"
-                                    value={nameFinal}
-                                    onChange={(e) => setNameFinal(e.target.value)}
-                                />
-                            </div>
-
-                            {/* Telefone */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-sm text-gray-700">
-                                    Telefone (WhatsApp)
-                                </label>
-                                <input
-                                    className="rounded-md border px-3 py-2"
-                                    placeholder="(00) 00000-0000"
-                                    value={phoneFinal}
-                                    onChange={(e) =>
-                                        setPhoneFinal(maskPhoneBR(e.target.value))
-                                    }
-                                />
-                            </div>
-
-                            {/* Email */}
-                            <div className="md:col-span-2 flex flex-col gap-2">
-                                <label className="text-sm text-gray-700">
-                                    E-mail <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    className="rounded-md border px-3 py-2"
-                                    placeholder="email@exemplo.com"
-                                    value={emailFinal}
-                                    onChange={(e) =>
-                                        setEmailFinal(e.target.value.trim())
-                                    }
-                                />
-                            </div>
-                        </div>
-
-                        {/* BOTÕES */}
                         <div className="pt-4 flex items-center gap-10">
                             <button
                                 type="button"
