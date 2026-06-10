@@ -367,7 +367,7 @@ const InterviewEdit = ({ interviewId }: Props) => {
                                 )}
 
 
-                                {q.type === "open_text" && (
+                                {(q.type === "open" || q.type === "open_text") && (
                                     <textarea
                                         className="mt-2 w-full rounded-md border px-3 py-2 text-sm"
                                         rows={2}

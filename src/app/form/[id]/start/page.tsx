@@ -50,16 +50,30 @@ type QuestionOption = {
 type Question = {
     id: number;
     title: string;
-    type: "single_choice" | "multiple_choice" | "open_text" | string;
+    type:
+    | "single_choice"
+    | "multiple_choice"
+    | "open"
+    | "open_text"
+    | string;
     required?: boolean;
     is_hidden?: number | boolean;
     options?: QuestionOption[];
 };
 
+type Quota = {
+    id: number;
+    quiz_id: number;
+    question_id: number;
+    question_option_id: number;
+    limit: number;
+    current_count: number;
+    parent_quota_id?: number | null;
+};
+
 /* ========================================================================== */
 /* ======================= HELPERS / MÁSCARAS =============================== */
 /* ========================================================================== */
-
 
 const clamp = (n: number, min: number, max: number) =>
     Math.max(min, Math.min(max, n));
@@ -101,6 +115,7 @@ export default function FormStartPage() {
     const [answers, setAnswers] = useState<Record<number, any>>({});
     // Texto digitado quando a opção for aberta
     const [openText, setOpenText] = useState<string>("");
+    const [quotas, setQuotas] = useState<Quota[]>([]);
 
     const total = data?.questions?.length ?? 0;
     const isFinal = idx === total;
@@ -169,6 +184,54 @@ export default function FormStartPage() {
             mounted = false;
         };
     }, [quizId]);
+
+    /* ====================================================================== */
+    /* ============================= LOAD QUOTAS ============================= */
+    /* ====================================================================== */
+
+    useEffect(() => {
+        async function loadQuotas() {
+            if (!quizId) return;
+
+            try {
+                const res = await fetch(`${CLIENT_BASE}/api/quota-public/quiz/${quizId}`, {
+                    cache: "no-store",
+                });
+
+                if (!res.ok) return;
+
+                const json = await res.json();
+
+                if (Array.isArray(json)) {
+                    setQuotas(json);
+                }
+            } catch (e) {
+                console.error("Erro ao carregar quotas:", e);
+            }
+        }
+
+        loadQuotas();
+    }, [quizId]);
+
+    async function refreshQuotas() {
+        if (!quizId) return;
+
+        try {
+            const res = await fetch(`${CLIENT_BASE}/api/quota-public/quiz/${quizId}`, {
+                cache: "no-store",
+            });
+
+            if (!res.ok) return;
+
+            const json = await res.json();
+
+            if (Array.isArray(json)) {
+                setQuotas(json);
+            }
+        } catch (e) {
+            console.error("Erro ao atualizar quotas:", e);
+        }
+    }
 
     /* ====================================================================== */
     /* ====================== RESTAURA PROGRESSO LOCAL ====================== */
@@ -387,6 +450,79 @@ export default function FormStartPage() {
     }
 
     /* ====================================================================== */
+    /* ============================ HELPERS QUOTAS =========================== */
+    /* ====================================================================== */
+
+    function getQuota(questionId: number, optionId: number) {
+        return quotas.find(
+            (q) =>
+                Number(q.question_id) === Number(questionId) &&
+                Number(q.question_option_id) === Number(optionId)
+        );
+    }
+
+    function isQuotaFull(questionId: number, optionId: number) {
+        const quota = getQuota(questionId, optionId);
+
+        if (!quota) return false;
+
+        return (
+            Number(quota.limit) > 0 &&
+            Number(quota.current_count) >= Number(quota.limit)
+        );
+    }
+
+    function renderQuotaBadge(questionId: number, optionId: number) {
+        const quota = getQuota(questionId, optionId);
+
+        if (!quota) return null;
+
+        const full =
+            Number(quota.limit) > 0 &&
+            Number(quota.current_count) >= Number(quota.limit);
+
+        return (
+            <span
+                className={`text-xs font-medium px-2 py-1 rounded-full ${full
+                    ? "bg-red-100 text-red-700"
+                    : "bg-gray-100 text-gray-600"
+                    }`}
+            >
+                {quota.current_count}/{quota.limit}
+            </span>
+        );
+    }
+
+    function getErrorStatus(e: any) {
+        return (
+            e?.response?.status ||
+            e?.status ||
+            e?.statusCode ||
+            e?.data?.status ||
+            null
+        );
+    }
+
+    async function handleQuotaError(e: any) {
+        const status = getErrorStatus(e);
+        const message = String(e?.message || "");
+
+        if (status === 409 || message.includes("409") || message.toLowerCase().includes("cota")) {
+            await refreshQuotas();
+
+            Swal.fire({
+                icon: "warning",
+                title: "Cota atingida",
+                text: "Essa opção não possui mais vagas disponíveis.",
+            });
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /* ====================================================================== */
     /* ======================= SALVA PROGRESSO LOCAL ======================== */
     /* ====================================================================== */
 
@@ -410,7 +546,18 @@ export default function FormStartPage() {
     /* ====================================================================== */
 
     const handleSelectSingle = async (q: Question, optionId: number) => {
+        if (isQuotaFull(q.id, optionId)) {
+            Swal.fire({
+                icon: "warning",
+                title: "Cota atingida",
+                text: "Essa opção não possui mais vagas disponíveis.",
+            });
+            return;
+        }
+
+        const previousAnswers = { ...answers };
         const updatedAnswers = { ...answers, [q.id]: optionId };
+
         setAnswers(updatedAnswers);
         saveLocal(idx, updatedAnswers);
 
@@ -421,7 +568,19 @@ export default function FormStartPage() {
                 option_id: optionId,
                 time_spent_ms: 0,
             });
-        } catch (e) { }
+
+            await refreshQuotas();
+        } catch (e: any) {
+            const handled = await handleQuotaError(e);
+
+            setAnswers(previousAnswers);
+            saveLocal(idx, previousAnswers);
+
+            if (handled) return;
+
+            console.error(e);
+            return;
+        }
 
         const { jumpTo, refuse } = applyRules(q.id, optionId, updatedAnswers);
 
@@ -443,7 +602,7 @@ export default function FormStartPage() {
         if (jumpTo != null) {
             const idxTarget = data?.questions.findIndex(
                 (qq) => Number(qq.id) === Number(jumpTo)
-            ) ?? -1; // garante número
+            ) ?? -1;
 
             if (idxTarget >= 0) {
                 setTimeout(() => {
@@ -469,6 +628,15 @@ export default function FormStartPage() {
     /* ====================================================================== */
 
     const handleSelectMultiple = async (q: Question, opId: number) => {
+        if (isQuotaFull(q.id, opId)) {
+            Swal.fire({
+                icon: "warning",
+                title: "Cota atingida",
+                text: "Essa opção não possui mais vagas disponíveis.",
+            });
+            return;
+        }
+
         const prev = Array.isArray(answers[q.id]) ? answers[q.id] : [];
         let next: number[] = [];
 
@@ -478,7 +646,9 @@ export default function FormStartPage() {
             next = [...prev, opId];
         }
 
+        const previousAnswers = { ...answers };
         const updated = { ...answers, [q.id]: next };
+
         setAnswers(updated);
         saveLocal(idx, updated);
 
@@ -486,11 +656,21 @@ export default function FormStartPage() {
             const id = await ensureInterviewId();
             await apiCreateAnswer(id, {
                 question_id: q.id,
-                option_id: next as unknown as number, // garante para TS
+                option_id: next as unknown as number,
                 time_spent_ms: 0,
             });
 
-        } catch (e) { }
+            await refreshQuotas();
+        } catch (e: any) {
+            const handled = await handleQuotaError(e);
+
+            setAnswers(previousAnswers);
+            saveLocal(idx, previousAnswers);
+
+            if (handled) return;
+
+            console.error(e);
+        }
     };
 
     /* ====================================================================== */
@@ -508,6 +688,7 @@ export default function FormStartPage() {
         setIdx(newIdx);
         saveLocal(newIdx, answers);
     }
+
     /* ====================================================================== */
     /* ============================== FINALIZAÇÃO ============================ */
     /* ====================================================================== */
@@ -515,7 +696,6 @@ export default function FormStartPage() {
     const [submitting, setSubmitting] = useState(false);
 
     async function handleFinalize() {
-
         try {
             setSubmitting(true);
 
@@ -598,7 +778,6 @@ export default function FormStartPage() {
 
             {/* CONTEÚDO */}
             <section className="mx-auto max-w-5xl px-6 py-8">
-
                 {/* ERRO DEBUG */}
                 {errorBox && (
                     <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
@@ -636,7 +815,6 @@ ${errorBox}
 
                 {!loading && data && question && !isFinal && (
                     <div className="space-y-6">
-
                         <p className="text-sm text-gray-500">
                             {idx + 1} de {total}
                         </p>
@@ -646,10 +824,8 @@ ${errorBox}
                         </h2>
 
                         {/* SINGLE CHOICE */}
-                        {/* SINGLE CHOICE */}
                         {question.type === "single_choice" && (
                             <div className="space-y-3">
-
                                 {(question.options ?? []).map((op) => {
                                     const isOpenOption =
                                         op.label?.toLowerCase().includes("aberta") ||
@@ -658,35 +834,50 @@ ${errorBox}
                                         op.is_open === 1;
 
                                     const checked = answers[question.id] === op.id;
+                                    const quotaFull = isQuotaFull(question.id, op.id);
 
                                     return (
-                                        <div key={op.id} className="rounded-xl border px-4 py-4">
-                                            <label className="flex items-center gap-3 cursor-pointer">
+                                        <div
+                                            key={op.id}
+                                            className={`rounded-xl border px-4 py-4 ${quotaFull
+                                                ? "opacity-50 bg-gray-100 cursor-not-allowed"
+                                                : ""
+                                                }`}
+                                        >
+                                            <label
+                                                className={`flex items-center gap-3 ${quotaFull ? "cursor-not-allowed" : "cursor-pointer"
+                                                    }`}
+                                            >
                                                 <input
                                                     type="radio"
                                                     name={`q-${question.id}`}
                                                     className="h-4 w-4"
                                                     checked={checked}
+                                                    disabled={quotaFull}
                                                     onChange={() => {
+                                                        if (quotaFull) return;
+
                                                         setAnswers((prev) => ({
                                                             ...prev,
                                                             [question.id]: op.id,
                                                         }));
 
-                                                        setOpenText(""); // limpa texto quando troca a opção
+                                                        setOpenText("");
                                                         saveLocal(idx, {
                                                             ...answers,
                                                             [question.id]: op.id,
                                                         });
 
-                                                        // se NÃO for opção aberta → comportamento normal
                                                         if (!isOpenOption) {
                                                             handleSelectSingle(question, op.id);
                                                         }
                                                     }}
                                                 />
 
-                                                <span className="text-gray-800">{op.label}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-gray-800">{op.label}</span>
+                                                    {renderQuotaBadge(question.id, op.id)}
+                                                </div>
                                             </label>
 
                                             {/* SE FOR OPÇÃO ABERTA E TÁ SELECIONADA, MOSTRA O INPUT */}
@@ -704,10 +895,8 @@ ${errorBox}
                                         </div>
                                     );
                                 })}
-
                             </div>
                         )}
-
 
                         {/* MULTIPLE CHOICE */}
                         {question.type === "multiple_choice" && (
@@ -718,21 +907,30 @@ ${errorBox}
                                             ? answers[question.id]
                                             : [];
                                     const checked = arr.includes(op.id);
+                                    const quotaFull = isQuotaFull(question.id, op.id);
 
                                     return (
                                         <label
                                             key={op.id}
-                                            className="flex items-center gap-3 rounded-xl border px-4 py-4 hover:bg-gray-50 cursor-pointer"
+                                            className={`flex items-center gap-3 rounded-xl border px-4 py-4 hover:bg-gray-50 ${quotaFull
+                                                ? "opacity-50 bg-gray-100 cursor-not-allowed"
+                                                : "cursor-pointer"
+                                                }`}
                                         >
                                             <input
                                                 type="checkbox"
                                                 className="h-4 w-4"
                                                 checked={checked}
+                                                disabled={quotaFull}
                                                 onChange={() =>
                                                     handleSelectMultiple(question, op.id)
                                                 }
                                             />
-                                            <span className="text-gray-800">{op.label}</span>
+
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-gray-800">{op.label}</span>
+                                                {renderQuotaBadge(question.id, op.id)}
+                                            </div>
                                         </label>
                                     );
                                 })}
@@ -740,7 +938,7 @@ ${errorBox}
                         )}
 
                         {/* OPEN TEXT */}
-                        {question.type === "open_text" && (
+                        {(question.type === "open" || question.type === "open_text") && (
                             <textarea
                                 className="w-full rounded-lg border p-3"
                                 rows={5}
@@ -769,7 +967,7 @@ ${errorBox}
                                 Voltar
                             </button>
 
-                            <button
+                            {/* <button
                                 type="button"
                                 className={`rounded-md px-5 py-2 font-medium transition ${(() => {
                                     const selected = answers[question.id];
@@ -780,6 +978,10 @@ ${errorBox}
                                         op?.is_open === "1" ||
                                         op?.is_open === 1;
 
+                                    if (op && isQuotaFull(question.id, op.id)) {
+                                        return "bg-gray-300 text-gray-500 cursor-not-allowed";
+                                    }
+
                                     if (isOpenOption) {
                                         return openText.trim().length === 0
                                             ? "bg-gray-300 text-gray-500 cursor-not-allowed"
@@ -789,8 +991,7 @@ ${errorBox}
                                     return selected
                                         ? "bg-[#e74e15] text-white hover:opacity-90"
                                         : "bg-gray-300 text-gray-500 cursor-not-allowed";
-                                })()
-                                    }`}
+                                })()}`}
                                 disabled={(() => {
                                     const selected = answers[question.id];
                                     const op = (question.options ?? []).find((o) => o.id === selected);
@@ -800,6 +1001,7 @@ ${errorBox}
                                         op?.is_open === "1" ||
                                         op?.is_open === 1;
 
+                                    if (op && isQuotaFull(question.id, op.id)) return true;
                                     if (isOpenOption) return openText.trim().length === 0;
                                     return !selected;
                                 })()}
@@ -812,19 +1014,26 @@ ${errorBox}
                                         op?.is_open === "1" ||
                                         op?.is_open === 1;
 
+                                    if (op && isQuotaFull(question.id, op.id)) {
+                                        Swal.fire({
+                                            icon: "warning",
+                                            title: "Cota atingida",
+                                            text: "Essa opção não possui mais vagas disponíveis.",
+                                        });
+                                        return;
+                                    }
+
                                     try {
                                         const id = await ensureInterviewId();
 
                                         if (isOpenOption) {
-                                            // GRAVA O TEXTO CORRETAMENTE
                                             await apiCreateAnswer(id, {
                                                 question_id: question.id,
                                                 option_id: selected,
-                                                value_text: openText,   // <-- CAMPO CORRETO DO BD
+                                                value_text: openText,
                                                 time_spent_ms: 0,
                                             });
                                         } else {
-                                            // GRAVA OPÇÃO NORMAL (SEM TEXTO)
                                             await apiCreateAnswer(id, {
                                                 question_id: question.id,
                                                 option_id: selected,
@@ -832,16 +1041,129 @@ ${errorBox}
                                             });
                                         }
 
+                                        await refreshQuotas();
                                         goNext();
-                                    } catch (e) {
+                                    } catch (e: any) {
+                                        const handled = await handleQuotaError(e);
+
+                                        if (handled) return;
+
                                         console.error("Erro ao salvar resposta:", e);
                                     }
                                 }}
+                            >
+                                Avançar
+                            </button> */}
 
+                            <button
+                                type="button"
+                                className={`rounded-md px-5 py-2 font-medium transition ${(() => {
+                                    const selected = answers[question.id];
+                                    const isOpenQuestion =
+                                        question.type === "open" || question.type === "open_text";
+
+                                    const op = (question.options ?? []).find((o) => o.id === selected);
+                                    const isOpenOption =
+                                        op?.label?.toLowerCase().includes("aberta") ||
+                                        op?.label?.toLowerCase().includes("anotar") ||
+                                        op?.is_open === "1" ||
+                                        op?.is_open === 1;
+
+                                    if (op && isQuotaFull(question.id, op.id)) {
+                                        return "bg-gray-300 text-gray-500 cursor-not-allowed";
+                                    }
+
+                                    if (isOpenQuestion) {
+                                        return String(selected ?? "").trim().length === 0
+                                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                            : "bg-[#e74e15] text-white hover:opacity-90";
+                                    }
+
+                                    if (isOpenOption) {
+                                        return openText.trim().length === 0
+                                            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                            : "bg-[#e74e15] text-white hover:opacity-90";
+                                    }
+
+                                    return selected
+                                        ? "bg-[#e74e15] text-white hover:opacity-90"
+                                        : "bg-gray-300 text-gray-500 cursor-not-allowed";
+                                })()}`}
+                                disabled={(() => {
+                                    const selected = answers[question.id];
+                                    const isOpenQuestion =
+                                        question.type === "open" || question.type === "open_text";
+
+                                    const op = (question.options ?? []).find((o) => o.id === selected);
+                                    const isOpenOption =
+                                        op?.label?.toLowerCase().includes("aberta") ||
+                                        op?.label?.toLowerCase().includes("anotar") ||
+                                        op?.is_open === "1" ||
+                                        op?.is_open === 1;
+
+                                    if (op && isQuotaFull(question.id, op.id)) return true;
+                                    if (isOpenQuestion) return String(selected ?? "").trim().length === 0;
+                                    if (isOpenOption) return openText.trim().length === 0;
+
+                                    return !selected;
+                                })()}
+                                onClick={async () => {
+                                    const selected = answers[question.id];
+                                    const isOpenQuestion =
+                                        question.type === "open" || question.type === "open_text";
+
+                                    const op = (question.options ?? []).find((o) => o.id === selected);
+                                    const isOpenOption =
+                                        op?.label?.toLowerCase().includes("aberta") ||
+                                        op?.label?.toLowerCase().includes("anotar") ||
+                                        op?.is_open === "1" ||
+                                        op?.is_open === 1;
+
+                                    if (op && isQuotaFull(question.id, op.id)) {
+                                        Swal.fire({
+                                            icon: "warning",
+                                            title: "Cota atingida",
+                                            text: "Essa opção não possui mais vagas disponíveis.",
+                                        });
+                                        return;
+                                    }
+
+                                    try {
+                                        const id = await ensureInterviewId();
+
+                                        if (isOpenQuestion) {
+                                            await apiCreateAnswer(id, {
+                                                question_id: question.id,
+                                                value_text: String(selected ?? ""),
+                                                time_spent_ms: 0,
+                                            });
+                                        } else if (isOpenOption) {
+                                            await apiCreateAnswer(id, {
+                                                question_id: question.id,
+                                                option_id: Number(selected),
+                                                value_text: openText,
+                                                time_spent_ms: 0,
+                                            });
+                                        } else {
+                                            await apiCreateAnswer(id, {
+                                                question_id: question.id,
+                                                option_id: Number(selected),
+                                                time_spent_ms: 0,
+                                            });
+                                        }
+
+                                        await refreshQuotas();
+                                        goNext();
+                                    } catch (e: any) {
+                                        const handled = await handleQuotaError(e);
+                                        if (handled) return;
+
+                                        console.error("Erro ao salvar resposta:", e);
+                                    }
+                                }}
                             >
                                 Avançar
                             </button>
-
                         </div>
                     </div>
                 )}
@@ -891,5 +1213,3 @@ ${errorBox}
         </main>
     );
 }
-
-
