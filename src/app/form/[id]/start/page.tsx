@@ -868,9 +868,9 @@ ${errorBox}
                                                             [question.id]: op.id,
                                                         });
 
-                                                        if (!isOpenOption) {
-                                                            handleSelectSingle(question, op.id);
-                                                        }
+                                                        // if (!isOpenOption) {
+                                                        //     handleSelectSingle(question, op.id);
+                                                        // }
                                                     }}
                                                 />
 
