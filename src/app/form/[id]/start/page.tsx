@@ -35,7 +35,12 @@ type Rule = {
 };
 
 type QuizFull = {
-    quiz: { id: number; title: string };
+    quiz: {
+        id: number;
+        title: string;
+        end_date?: string | null;
+        status?: "active" | "test" | "disabled" | string | null;
+    };
     questions: Question[];
     rules?: Rule[];
 };
@@ -80,6 +85,17 @@ const clamp = (n: number, min: number, max: number) =>
 
 const CLIENT_BASE = "/_b";
 
+function isQuizExpired(endDate?: string | null) {
+    if (!endDate) return false;
+
+    const [year, month, day] = String(endDate).split("T")[0].split("-").map(Number);
+
+    const end = new Date(year, month - 1, day);
+    end.setHours(23, 59, 59, 999);
+
+    return new Date() > end;
+}
+
 /* ========================================================================== */
 /* ============================= DEBUG MODE ================================= */
 /* ========================================================================== */
@@ -120,6 +136,10 @@ export default function FormStartPage() {
     const total = data?.questions?.length ?? 0;
     const isFinal = idx === total;
     const question = !isFinal ? data?.questions?.[idx] ?? null : null;
+    const quizExpired = isQuizExpired(data?.quiz?.end_date);
+
+    const quizDisabled =
+        data?.quiz?.status === "disabled";
 
     const progressPct =
         total > 0
@@ -274,6 +294,9 @@ export default function FormStartPage() {
         async function tryStart() {
             if (!data?.quiz?.id) return;
 
+            // Não inicia entrevista se o formulário estiver vencido ou desabilitado
+            if (isQuizExpired(data.quiz.end_date) || data.quiz.status === "disabled") return;
+
             if (interviewId) return;
 
             const stored = interviewKey ? localStorage.getItem(interviewKey) : null;
@@ -333,6 +356,14 @@ export default function FormStartPage() {
         }
 
         if (!data?.quiz?.id) throw new Error("Quiz inválido");
+
+        if (isQuizExpired(data.quiz.end_date)) {
+            throw new Error("Formulário encerrado.");
+        }
+
+        if (data.quiz.status === "disabled") {
+            throw new Error("Formulário desabilitado.");
+        }
 
         const stored = interviewKey ? localStorage.getItem(interviewKey) : null;
         if (stored) {
@@ -809,11 +840,39 @@ ${errorBox}
                     <p className="text-red-600 text-sm">Falha ao carregar dados.</p>
                 )}
 
+                {/* FORMULÁRIO EXPIRADO */}
+
+                {!loading && data && quizExpired && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-700">
+                        <h2 className="text-2xl font-bold mb-2">
+                            Formulário encerrado
+                        </h2>
+
+                        <p>
+                            O prazo para responder este questionário já expirou.
+                        </p>
+                    </div>
+                )}
+
+                {/* FORMULÁRIO DESABILITADO */}
+
+                {!loading && data && !quizExpired && quizDisabled && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-700">
+                        <h2 className="text-2xl font-bold mb-2">
+                            Formulário desabilitado
+                        </h2>
+
+                        <p>
+                            Este questionário não está disponível para respostas.
+                        </p>
+                    </div>
+                )}
+
                 {/* ============================================================= */}
                 {/* ================== PERGUNTAS SEQUENCIAIS ==================== */}
                 {/* ============================================================= */}
 
-                {!loading && data && question && !isFinal && (
+                {!loading && data && !quizExpired && !quizDisabled && question && !isFinal && (
                     <div className="space-y-6">
                         <p className="text-sm text-gray-500">
                             {idx + 1} de {total}
@@ -1172,7 +1231,7 @@ ${errorBox}
                 {/* ======================= ETAPA FINAL ========================= */}
                 {/* ============================================================= */}
 
-                {!loading && data && isFinal && (
+                {!loading && data && !quizExpired && !quizDisabled && isFinal && (
                     <div className="space-y-6">
                         <p className="text-sm text-gray-500">
                             Etapa final

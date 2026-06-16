@@ -4,7 +4,7 @@ import { useQuiz } from "@/context/QuizContext";
 
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { useForm, type UseFormReturn } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,6 @@ import {
   createQuiz,
   updateQuiz,
   deleteQuiz,
-  updateQuizStatusOnly,
 } from "@/utils/actions/quizzes-data";
 import { quizzesProps } from "@/utils/types/quizzes";
 
@@ -74,6 +73,7 @@ export default function Quizzes() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedQuiz, setSelectedQuiz] = useState<quizzesProps | null>(null);
+  const [publicLinkError, setPublicLinkError] = useState<string | null>(null);
 
   const fetchQuizzes = async () => {
     setLoading(true);
@@ -90,7 +90,7 @@ export default function Quizzes() {
     title: "",
     end_date: "",
     max_sample: null,
-    status: "test",
+    status: "active",
     change_level: null,
     value_ns_nr: 99,
     value_skipped: 0,
@@ -124,14 +124,11 @@ export default function Quizzes() {
       title: quiz.title,
       end_date: quiz.end_date?.toString().split("T")[0] || "",
       max_sample: quiz.max_sample,
-      status:
-        quiz.status === "active" || quiz.status === "test" || quiz.status === "disabled"
-          ? (quiz.status as "active" | "test" | "disabled")
-          : "test",
+      status: quiz.status === "disabled" ? "disabled" : "active",
       change_level:
-        quiz.status === "active"
-          ? ((quiz.change_level as "low" | "high" | null) ?? "low")
-          : null,
+        quiz.status === "disabled"
+          ? null
+          : ((quiz.change_level as "low" | "high" | null) ?? "low"),
       value_ns_nr: quiz.value_ns_nr,
       value_skipped: quiz.value_skipped,
       value_blank: String(quiz.value_blank ?? "#"),
@@ -172,6 +169,8 @@ export default function Quizzes() {
     try {
       const payload = {
         ...data,
+        status: "active",
+        change_level: "low",
         allow_over_sample: data.allow_over_sample ? 1 : 0,
         allow_continued_collection: data.allow_continued_collection ? 1 : 0,
         is_online: data.is_online ? 1 : 0,
@@ -194,6 +193,8 @@ export default function Quizzes() {
     try {
       const payload = {
         ...data,
+        status: data.status === "disabled" ? "disabled" : "active",
+        change_level: data.status === "disabled" ? null : (data.change_level ?? "low"),
         allow_over_sample: data.allow_over_sample ? 1 : 0,
         allow_continued_collection: data.allow_continued_collection ? 1 : 0,
         is_online: data.is_online ? 1 : 0,
@@ -209,11 +210,56 @@ export default function Quizzes() {
     }
   };
 
-  const renderExtraFields = (_form: UseFormReturn<QuizFormData>) => <></>;
+  const renderExtraFields = (_form: ReturnType<typeof useForm<QuizFormData>>) => <></>;
 
   const publicBase =
     process.env.NEXT_PUBLIC_PUBLIC_BASE_URL ??
     (typeof window !== "undefined" ? window.location.origin : "");
+
+  function isQuizExpired(endDate?: string | Date | null) {
+    if (!endDate) return false;
+
+    const dateString =
+      endDate instanceof Date
+        ? endDate.toISOString().split("T")[0]
+        : String(endDate).split("T")[0];
+
+    const [year, month, day] = dateString.split("-").map(Number);
+
+    const end = new Date(year, month - 1, day);
+    end.setHours(23, 59, 59, 999);
+
+    return new Date() > end;
+  }
+
+  function handleOpenPublicForm(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (!selectedQuiz) {
+      e.preventDefault();
+      return;
+    }
+
+    if (selectedQuiz.status === "disabled") {
+      e.preventDefault();
+
+      setPublicLinkError(
+        "Formulário desabilitado. Este questionário não está disponível para respostas."
+      );
+
+      return;
+    }
+
+    if (isQuizExpired(selectedQuiz.end_date)) {
+      e.preventDefault();
+
+      setPublicLinkError(
+        "Formulário encerrado. O prazo para responder este questionário já expirou."
+      );
+
+      return;
+    }
+
+    setPublicLinkError(null);
+  }
 
   return (
     <div className="p-6 bg-white rounded-lg shadow-md">
@@ -283,7 +329,7 @@ export default function Quizzes() {
                           <FormLabel>Modo</FormLabel>
                           <FormControl>
                             <select {...field} className="input" disabled>
-                              <option value="test">Teste</option>
+                              <option value="active">Ativo</option>
                             </select>
                           </FormControl>
                         </FormItem>
@@ -452,9 +498,15 @@ export default function Quizzes() {
                           href={selectedQuiz ? `${publicBase}/form/${selectedQuiz.id}` : "#"}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={handleOpenPublicForm}
                         >
                           Clique aqui para acessar o LINK DO FORMULÁRIO ONLINE
                         </Link>
+                        {publicLinkError && (
+                          <p className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {publicLinkError}
+                          </p>
+                        )}
                       </DialogDescription>
                     </DialogHeader>
 
@@ -501,56 +553,27 @@ export default function Quizzes() {
                                   <select
                                     {...field}
                                     className="input"
-                                    onChange={async (e) => {
-                                      const newValue = e.target.value as "test" | "active" | "disabled";
-
-                                      if (field.value === "test" && newValue === "active" && selectedQuiz?.id) {
-                                        setEditModalOpen(false);
-
-                                        const result = await Swal.fire({
-                                          title: "Confirma?",
-                                          text:
-                                            "Quando o modo do questionário for modificado para ATIVO não pode voltar mais para o modo TESTE.",
-                                          icon: "warning",
-                                          showCancelButton: true,
-                                          confirmButtonText: "Sim, confirmar",
-                                          cancelButtonText: "Cancelar",
-                                        });
-
-                                        if (result.isConfirmed) {
-                                          try {
-                                            await updateQuizStatusOnly(selectedQuiz.id, "active", "low");
-                                            field.onChange("active");
-                                            editForm.setValue("change_level", "low");
-                                            toast.success("Status atualizado para ATIVO com sucesso!");
-                                          } catch (err) {
-                                            console.error(err);
-                                            toast.error("Erro ao atualizar status.");
-                                            field.onChange("test");
-                                          }
-                                        } else {
-                                          field.onChange("test");
-                                        }
-
-                                        setTimeout(() => setEditModalOpen(true), 100);
-                                        return;
-                                      }
+                                    onChange={(e) => {
+                                      const newValue = e.target.value as "active" | "disabled";
 
                                       field.onChange(newValue);
+
+                                      if (newValue === "active") {
+                                        editForm.setValue("change_level", editForm.getValues("change_level") ?? "low");
+                                      } else {
+                                        editForm.setValue("change_level", null);
+                                      }
                                     }}
                                   >
-                                    {field.value === "test" && <option value="test">Teste</option>}
                                     <option value="active">Ativo</option>
-                                    {field.value !== "test" ? (
-                                      <option value="disabled">Desabilitado</option>
-                                    ) : null}
+                                    <option value="disabled">Desabilitado</option>
                                   </select>
                                 </FormControl>
                               </FormItem>
                             )}
                           />
 
-                          {/* CHANGE LEVEL */}
+                          {/* CHANGE LEVEL — correção do TS2367 */}
                           <FormField
                             name="change_level"
                             control={editForm.control}
@@ -566,6 +589,7 @@ export default function Quizzes() {
                                       const newValue = (e.target.value ?? "") as "" | "low" | "high";
                                       const currentValue = (field.value ?? "") as "" | "low" | "high";
 
+                                      // vazio → null no form state
                                       if (newValue === "") {
                                         field.onChange(null);
                                         return;
@@ -594,7 +618,7 @@ export default function Quizzes() {
                                         if (result.isConfirmed) {
                                           field.onChange(newValue);
                                         } else {
-                                          field.onChange((currentValue as any) === "" ? null : currentValue);
+                                          field.onChange(currentValue as any === "" ? null : currentValue);
                                         }
 
                                         setTimeout(() => setEditModalOpen(true), 100);
