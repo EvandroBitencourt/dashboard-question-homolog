@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import React from "react";
 import {
   Users,
   ChartPie,
@@ -24,26 +25,51 @@ import { useQuiz } from "@/context/QuizContext";
 import Swal from "sweetalert2";
 
 /** Botão genérico usado nos dois layouts */
-function IconBtn({
-  onClick,
-  children,
-  className = "",
-  size = "md",
-}: {
-  onClick: () => void;
-  children: React.ReactNode;
-  className?: string;
-  size?: "sm" | "md";
-}) {
+// function IconBtn({
+//   onClick,
+//   children,
+//   className = "",
+//   size = "md",
+// }: {
+//   onClick: () => void;
+//   children: React.ReactNode;
+//   className?: string;
+//   size?: "sm" | "md";
+// }) {
+//   const base =
+//     "grid place-items-center rounded-lg bg-[#e74e15] text-white transition-colors hover:bg-[#d9441e]";
+//   const dims = size === "sm" ? "h-10 w-10" : "h-12 w-12";
+//   return (
+//     <button onClick={onClick} className={`${base} ${dims} ${className}`}>
+//       {children}
+//     </button>
+//   );
+// }
+
+const IconBtn = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    size?: "sm" | "md";
+  }
+>(({ onClick, children, className = "", size = "md", ...props }, ref) => {
   const base =
     "grid place-items-center rounded-lg bg-[#e74e15] text-white transition-colors hover:bg-[#d9441e]";
   const dims = size === "sm" ? "h-10 w-10" : "h-12 w-12";
+
   return (
-    <button onClick={onClick} className={`${base} ${dims} ${className}`}>
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      className={`${base} ${dims} ${className}`}
+      {...props}
+    >
       {children}
     </button>
   );
-}
+});
+
+IconBtn.displayName = "IconBtn";
 
 const Sidebar = () => {
   const { selectedQuizId } = useQuiz();
