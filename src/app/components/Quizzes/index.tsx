@@ -479,7 +479,7 @@ export default function Quizzes() {
               <div>
                 <h3 className="font-bold text-lg">{quiz.title}</h3>
                 <p className="text-sm text-gray-600">
-                  Finaliza em: {new Date(quiz.end_date).toLocaleDateString()}
+                  Finaliza em: {String(quiz.end_date).split("T")[0].split("-").reverse().join("/")}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -542,6 +542,18 @@ export default function Quizzes() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <FormField
+                            name="end_date"
+                            control={editForm.control}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Data Final</FormLabel>
+                                <FormControl>
+                                  <Input type="date" {...field} />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
                           {/* STATUS */}
                           <FormField
                             name="status"
