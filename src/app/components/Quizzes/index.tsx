@@ -8,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button } from "@/components/ui/button";
-import { Plus, Pencil, Trash } from "lucide-react";
+import { Plus, Pencil, Trash, Copy } from "lucide-react";
 import { FaSpinner } from "react-icons/fa";
 import { toast } from "react-toastify";
 import Link from "next/link";
@@ -38,7 +38,9 @@ import {
   createQuiz,
   updateQuiz,
   deleteQuiz,
+  duplicateQuiz,
 } from "@/utils/actions/quizzes-data";
+
 import { quizzesProps } from "@/utils/types/quizzes";
 
 import Swal from "sweetalert2";
@@ -162,6 +164,28 @@ export default function Quizzes() {
       } catch {
         Swal.fire("Erro", "Erro ao excluir quiz.", "error");
       }
+    }
+  };
+
+  const handleDuplicate = async (quiz: quizzesProps) => {
+    const result = await Swal.fire({
+      title: "Duplicar questionário?",
+      text: `Deseja criar uma cópia de "${quiz.title}"?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Sim, duplicar",
+      cancelButtonText: "Cancelar",
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await duplicateQuiz(quiz.id);
+
+      toast.success("Questionário duplicado com sucesso!");
+      await fetchQuizzes();
+    } catch {
+      toast.error("Erro ao duplicar questionário.");
     }
   };
 
@@ -766,6 +790,17 @@ export default function Quizzes() {
                     </Form>
                   </DialogContent>
                 </Dialog>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDuplicate(quiz);
+                  }}
+                >
+                  <Copy className="w-4 h-4" />
+                </Button>
 
                 <Button variant="destructive" size="icon" onClick={() => handleDelete(quiz.id)}>
                   <Trash className="w-4 h-4" />

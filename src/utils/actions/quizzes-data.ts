@@ -193,4 +193,19 @@ export async function restoreQuiz(id: number) {
   }
 }
 
+export async function duplicateQuiz(id: number): Promise<any> {
+  const headers = await getServerAuthHeaders();
+
+  const res = await fetch(`${BASE_API_URL}/questionnaire/${id}/duplicate`, {
+    method: "POST",
+    headers,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao duplicar quiz: ${res.status} - ${await res.text()}`);
+  }
+
+  return res.json();
+}
+
 
